@@ -144,18 +144,52 @@ class GameScene extends Phaser.Scene {
     const container = this.add.container(0, 0, [background, text]);
     container.setSize(width, height);
 
+    const button = {
+      container,
+      background,
+      text,
+      baseWidth: width,
+      baseHeight: height,
+      baseScale: 1,
+      pressTween: null,
+    };
+
     background.on("pointerdown", () => {
-      this.tweens.add({
-        targets: container,
-        scaleX: 0.96,
-        scaleY: 0.96,
-        yoyo: true,
-        duration: 90,
-      });
+      this.playButtonPress(button);
       onPress();
     });
 
-    return { container, background, text, baseWidth: width, baseHeight: height };
+    return button;
+  }
+
+  setButtonBaseScale(button, scale) {
+    if (button.pressTween) {
+      button.pressTween.stop();
+      button.pressTween = null;
+    }
+    button.baseScale = scale;
+    button.container.setScale(scale);
+  }
+
+  playButtonPress(button) {
+    if (button.pressTween) {
+      button.pressTween.stop();
+      button.pressTween = null;
+    }
+
+    button.container.setScale(button.baseScale);
+    const pressedScale = button.baseScale * 0.94;
+    button.pressTween = this.tweens.add({
+      targets: button.container,
+      scaleX: pressedScale,
+      scaleY: pressedScale,
+      yoyo: true,
+      duration: 90,
+      onComplete: () => {
+        button.pressTween = null;
+        button.container.setScale(button.baseScale);
+      },
+    });
   }
 
   startGame() {
@@ -477,8 +511,8 @@ class GameScene extends Phaser.Scene {
     );
     const buttonWidth = this.startButton.baseWidth * buttonScale;
 
-    this.startButton.container.setScale(buttonScale);
-    this.soundButton.container.setScale(buttonScale);
+    this.setButtonBaseScale(this.startButton, buttonScale);
+    this.setButtonBaseScale(this.soundButton, buttonScale);
     this.startButton.container.setPosition(sidePadding + buttonWidth * 0.5, buttonsY);
     this.soundButton.container.setPosition(w - sidePadding - buttonWidth * 0.5, buttonsY);
 
