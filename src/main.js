@@ -1,5 +1,7 @@
 const GAME_CONFIG = Object.freeze({
   gridSize: 3,
+  gameDurationMs: 30000,
+  countdownTickMs: 100,
   roundMsInitial: 1800,
   roundMsMin: 900,
   roundMsStep: 40,
@@ -34,10 +36,14 @@ class GameScene extends Phaser.Scene {
     this.activeCellIndex = -1;
     this.roundTimer = null;
     this.nextSpawnTimer = null;
+    this.gameTimer = null;
+    this.countdownTickTimer = null;
     this.targetPulseTween = null;
     this.isRunning = false;
     this.roundResolved = false;
     this.score = 0;
+    this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
+    this.countdownEndAt = 0;
     this.roundMsCurrent = GAME_CONFIG.roundMsInitial;
     this.audioEnabled = AUDIO_CONFIG.enabledByDefault;
   }
@@ -52,6 +58,8 @@ class GameScene extends Phaser.Scene {
 
   setupState() {
     this.score = 0;
+    this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
+    this.countdownEndAt = 0;
     this.roundMsCurrent = GAME_CONFIG.roundMsInitial;
     this.activeCellIndex = -1;
     this.isRunning = false;
@@ -74,6 +82,15 @@ class GameScene extends Phaser.Scene {
         fontFamily: "Noto Sans JP, sans-serif",
         fontSize: "34px",
         color: "#41505f",
+        fontStyle: "700",
+      })
+      .setOrigin(0.5, 0);
+
+    this.timeText = this.add
+      .text(0, 0, "のこり: 30", {
+        fontFamily: "Noto Sans JP, sans-serif",
+        fontSize: "30px",
+        color: "#2f8f4e",
         fontStyle: "700",
       })
       .setOrigin(0.5, 0);
@@ -142,15 +159,25 @@ class GameScene extends Phaser.Scene {
   }
 
   startGame() {
-    this.clearRoundTimers();
+    this.clearTimers();
     this.isRunning = true;
     this.roundResolved = true;
     this.score = 0;
+    this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
+    this.countdownEndAt = this.time.now + GAME_CONFIG.gameDurationMs;
     this.roundMsCurrent = GAME_CONFIG.roundMsInitial;
     this.activeCellIndex = -1;
     this.updateScoreText();
+    this.updateTimeText();
     this.setStatusText("あかいまるを タップ！");
     this.startButton.text.setText("もういちど");
+
+    this.gameTimer = this.time.delayedCall(GAME_CONFIG.gameDurationMs, () => this.finishGame());
+    this.countdownTickTimer = this.time.addEvent({
+      delay: GAME_CONFIG.countdownTickMs,
+      loop: true,
+      callback: () => this.updateRemainingTime(),
+    });
     this.spawnTarget();
   }
 
@@ -255,8 +282,42 @@ class GameScene extends Phaser.Scene {
     this.scoreText.setText(`スコア: ${this.score}`);
   }
 
+  updateRemainingTime() {
+    if (!this.isRunning) {
+      return;
+    }
+
+    const msLeft = Math.max(0, this.countdownEndAt - this.time.now);
+    this.remainingTimeMs = msLeft;
+    this.updateTimeText();
+
+    if (msLeft <= 0) {
+      this.finishGame();
+    }
+  }
+
+  updateTimeText() {
+    const secondsLeft = Math.ceil(Math.max(0, this.remainingTimeMs) / 1000);
+    this.timeText.setText(`のこり: ${secondsLeft}`);
+  }
+
   setStatusText(message) {
     this.statusText.setText(message);
+  }
+
+  finishGame() {
+    if (!this.isRunning) {
+      return;
+    }
+
+    this.isRunning = false;
+    this.roundResolved = true;
+    this.remainingTimeMs = 0;
+    this.updateTimeText();
+    this.hideTarget();
+    this.clearTimers();
+    this.setStatusText("おしまい！ もういちど");
+    this.startButton.text.setText("もういちど");
   }
 
   toggleSound() {
@@ -359,10 +420,26 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  clearCountdownTimers() {
+    if (this.gameTimer) {
+      this.gameTimer.remove(false);
+      this.gameTimer = null;
+    }
+    if (this.countdownTickTimer) {
+      this.countdownTickTimer.remove(false);
+      this.countdownTickTimer = null;
+    }
+  }
+
+  clearTimers() {
+    this.clearRoundTimers();
+    this.clearCountdownTimers();
+  }
+
   layout(width, height) {
     const w = Math.max(320, width);
     const h = Math.max(480, height);
-    const topArea = Math.max(156, h * 0.2);
+    const topArea = Math.max(208, h * 0.26);
     const bottomArea = Math.max(180, h * 0.24);
     const availableBoardHeight = Math.max(220, h - topArea - bottomArea - 24);
     const boardSize = Math.min(w * 0.9, availableBoardHeight);
@@ -371,13 +448,18 @@ class GameScene extends Phaser.Scene {
     const cellSize = boardSize / GAME_CONFIG.gridSize;
 
     const scoreFontSize = Phaser.Math.Clamp(Math.round(w * 0.105), 40, 56);
+    const timeFontSize = Phaser.Math.Clamp(Math.round(w * 0.058), 24, 32);
     const statusFontSize = Phaser.Math.Clamp(Math.round(w * 0.062), 28, 36);
     this.scoreText.setFontSize(scoreFontSize);
+    this.timeText.setFontSize(timeFontSize);
     this.statusText.setFontSize(statusFontSize);
     this.scoreText.setPosition(w * 0.5, Math.max(18, topArea * 0.06));
 
     const scoreBottom = this.scoreText.y + this.scoreText.height;
-    const statusTop = scoreBottom + Math.max(8, h * 0.01);
+    const timeTop = scoreBottom + Math.max(6, h * 0.008);
+    this.timeText.setPosition(w * 0.5, timeTop);
+    const timeBottom = this.timeText.y + this.timeText.height;
+    const statusTop = timeBottom + Math.max(6, h * 0.008);
     this.statusText.setPosition(w * 0.5, statusTop);
 
     const buttonsY = h - bottomArea * 0.5;
@@ -440,7 +522,7 @@ class GameScene extends Phaser.Scene {
   }
 
   shutdown() {
-    this.clearRoundTimers();
+    this.clearTimers();
     this.hideTarget();
     this.scale.off("resize", this.onResize, this);
   }
