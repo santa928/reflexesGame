@@ -32,16 +32,23 @@ body {
 
 #rotate-overlay {
   position: fixed;
-  inset: 0;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
   display: none;
-  align-items: center;
-  justify-content: center;
+  width: fit-content;
+  max-width: min(92vw, 560px);
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.82);
   background: var(--overlay);
   color: #fff;
   text-align: center;
-  font-size: clamp(1.2rem, 4vw, 2rem);
+  font-size: clamp(1rem, 3.3vw, 1.35rem);
   font-weight: 700;
   z-index: 20;
+  pointer-events: none;
+  box-shadow: 0 10px 24px rgba(17, 22, 29, 0.25);
 }
 
 #rotate-overlay p {
@@ -49,8 +56,6 @@ body {
   letter-spacing: 0.08em;
 }
 
-@media (orientation: landscape) {
-  #rotate-overlay {
-    display: flex;
-  }
+#rotate-overlay.is-visible {
+  display: block;
 }

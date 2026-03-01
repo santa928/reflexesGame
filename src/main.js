@@ -436,12 +436,35 @@ const phaserConfig = {
   },
 };
 
+const rotateHintElement = document.getElementById("rotate-overlay");
+
+function isTouchLikeDevice() {
+  return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+}
+
+function updateRotateHint() {
+  if (!rotateHintElement) {
+    return false;
+  }
+  const isLandscape = window.innerWidth > window.innerHeight;
+  const shouldShow = isTouchLikeDevice() && isLandscape;
+  rotateHintElement.classList.toggle("is-visible", shouldShow);
+  return shouldShow;
+}
+
+window.addEventListener("resize", updateRotateHint);
+window.addEventListener("orientationchange", updateRotateHint);
+
 window.addEventListener("load", () => {
   // Phaser のスクリプト読み込み完了後にのみゲームを初期化する。
   if (!window.Phaser) {
     throw new Error("Phaser の読み込みに失敗しました。ネットワーク接続を確認してください。");
   }
   const game = new Phaser.Game(phaserConfig);
+  updateRotateHint();
   // 最小スモークや将来のE2Eで参照できるよう、グローバルに公開する。
   window.__reflexesGame = game;
+  window.__reflexesGameUi = {
+    updateRotateHint,
+  };
 });
