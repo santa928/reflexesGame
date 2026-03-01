@@ -76,7 +76,7 @@ class GameScene extends Phaser.Scene {
         color: "#41505f",
         fontStyle: "700",
       })
-      .setOrigin(0.5, 0.5);
+      .setOrigin(0.5, 0);
 
     this.startButton = this.createButton({
       label: "スタート",
@@ -138,7 +138,7 @@ class GameScene extends Phaser.Scene {
       onPress();
     });
 
-    return { container, background, text };
+    return { container, background, text, baseWidth: width, baseHeight: height };
   }
 
   startGame() {
@@ -362,7 +362,7 @@ class GameScene extends Phaser.Scene {
   layout(width, height) {
     const w = Math.max(320, width);
     const h = Math.max(480, height);
-    const topArea = Math.max(140, h * 0.17);
+    const topArea = Math.max(156, h * 0.2);
     const bottomArea = Math.max(180, h * 0.24);
     const availableBoardHeight = Math.max(220, h - topArea - bottomArea - 24);
     const boardSize = Math.min(w * 0.9, availableBoardHeight);
@@ -370,12 +370,35 @@ class GameScene extends Phaser.Scene {
     const boardTop = topArea + Math.max(8, (availableBoardHeight - boardSize) * 0.5);
     const cellSize = boardSize / GAME_CONFIG.gridSize;
 
-    this.scoreText.setPosition(w * 0.5, Math.max(20, topArea * 0.08));
-    this.statusText.setPosition(w * 0.5, topArea * 0.63);
+    const scoreFontSize = Phaser.Math.Clamp(Math.round(w * 0.105), 40, 56);
+    const statusFontSize = Phaser.Math.Clamp(Math.round(w * 0.062), 28, 36);
+    this.scoreText.setFontSize(scoreFontSize);
+    this.statusText.setFontSize(statusFontSize);
+    this.scoreText.setPosition(w * 0.5, Math.max(18, topArea * 0.06));
+
+    const scoreBottom = this.scoreText.y + this.scoreText.height;
+    const statusTop = scoreBottom + Math.max(8, h * 0.01);
+    this.statusText.setPosition(w * 0.5, statusTop);
 
     const buttonsY = h - bottomArea * 0.5;
-    this.startButton.container.setPosition(w * 0.31, buttonsY);
-    this.soundButton.container.setPosition(w * 0.69, buttonsY);
+    const sidePadding = Phaser.Math.Clamp(w * 0.028, 10, 20);
+    const buttonGap = Phaser.Math.Clamp(w * 0.02, 8, 16);
+    const desiredButtonWidth = Math.min(280, (w - sidePadding * 2 - buttonGap) * 0.5);
+    const desiredButtonHeight = Phaser.Math.Clamp(h * 0.095, 76, 94);
+    const buttonScale = Phaser.Math.Clamp(
+      Math.min(
+        desiredButtonWidth / this.startButton.baseWidth,
+        desiredButtonHeight / this.startButton.baseHeight,
+      ),
+      0.72,
+      1,
+    );
+    const buttonWidth = this.startButton.baseWidth * buttonScale;
+
+    this.startButton.container.setScale(buttonScale);
+    this.soundButton.container.setScale(buttonScale);
+    this.startButton.container.setPosition(sidePadding + buttonWidth * 0.5, buttonsY);
+    this.soundButton.container.setPosition(w - sidePadding - buttonWidth * 0.5, buttonsY);
 
     this.boardGraphics.clear();
     this.boardGraphics.fillStyle(0xffffff, 0.9);
