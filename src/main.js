@@ -3,19 +3,89 @@ const GAME_CONFIG = Object.freeze({
   gameDurationMs: 30000,
   countdownTickMs: 100,
   roundMsInitial: 1800,
-  roundMsMin: 900,
   roundMsStep: 40,
-  assistMsOnMiss: 80,
-  spawnDelayMs: 220,
+  animalChoices: ["🐶", "🐱", "🐰", "🐤", "🐸"],
+  statusMessages: {
+    ready: "どうぶつを タップ！",
+    hit: ["いいね！", "すごい！", "ナイス！"],
+    miss: ["あとすこし！", "つぎ いくよ！"],
+    finish: "おしまい！ もういちど",
+  },
+  tierConfigs: [
+    {
+      tier: 1,
+      minScore: 0,
+      targetCount: 1,
+      roundMsMultiplier: 1,
+      spawnDelayMs: 220,
+      targetScale: 1,
+      minRoundMs: 900,
+      assistMsOnMiss: 80,
+      badgeColor: 0xffb86c,
+      haloColor: 0xffddb8,
+    },
+    {
+      tier: 2,
+      minScore: 10,
+      targetCount: 1,
+      roundMsMultiplier: 0.9,
+      spawnDelayMs: 190,
+      targetScale: 0.97,
+      minRoundMs: 820,
+      assistMsOnMiss: 70,
+      badgeColor: 0xf8d45c,
+      haloColor: 0xffefb3,
+    },
+    {
+      tier: 3,
+      minScore: 20,
+      targetCount: 2,
+      roundMsMultiplier: 0.84,
+      spawnDelayMs: 170,
+      targetScale: 0.93,
+      minRoundMs: 760,
+      assistMsOnMiss: 60,
+      badgeColor: 0x79d9b0,
+      haloColor: 0xcff7e3,
+    },
+    {
+      tier: 4,
+      minScore: 30,
+      targetCount: 2,
+      roundMsMultiplier: 0.76,
+      spawnDelayMs: 150,
+      targetScale: 0.86,
+      minRoundMs: 680,
+      assistMsOnMiss: 50,
+      badgeColor: 0x63b1ff,
+      haloColor: 0xc9e4ff,
+    },
+  ],
 });
 
 const AUDIO_CONFIG = Object.freeze({
   enabledByDefault: false,
-  volumeHit: 0.06,
-  volumeMiss: 0.05,
-  toneHitHz: 780,
-  toneMissHz: 220,
-  toneDurationMs: 120,
+  cues: {
+    toggle: [
+      { frequencyHz: 660, durationMs: 70, volume: 0.028, wave: "triangle" },
+    ],
+    hit: [
+      { frequencyHz: 820, durationMs: 80, volume: 0.04, wave: "triangle" },
+      { frequencyHz: 980, durationMs: 70, volume: 0.028, wave: "triangle", startOffsetMs: 40 },
+    ],
+    miss: [
+      { frequencyHz: 250, durationMs: 110, volume: 0.028, wave: "sine" },
+    ],
+    levelUp: [
+      { frequencyHz: 520, durationMs: 90, volume: 0.03, wave: "triangle" },
+      { frequencyHz: 760, durationMs: 90, volume: 0.036, wave: "triangle", startOffsetMs: 60 },
+      { frequencyHz: 1020, durationMs: 120, volume: 0.04, wave: "triangle", startOffsetMs: 120 },
+    ],
+    finish: [
+      { frequencyHz: 620, durationMs: 100, volume: 0.03, wave: "sine" },
+      { frequencyHz: 480, durationMs: 140, volume: 0.026, wave: "sine", startOffsetMs: 80 },
+    ],
+  },
 });
 
 class BootScene extends Phaser.Scene {
@@ -33,23 +103,31 @@ class GameScene extends Phaser.Scene {
     super("GameScene");
     this.cellCenters = [];
     this.cellZones = [];
-    this.activeCellIndex = -1;
     this.roundTimer = null;
     this.nextSpawnTimer = null;
     this.gameTimer = null;
     this.countdownTickTimer = null;
-    this.targetPulseTween = null;
     this.isRunning = false;
     this.roundResolved = false;
     this.score = 0;
+    this.tier = 1;
     this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
     this.countdownEndAt = 0;
     this.roundMsCurrent = GAME_CONFIG.roundMsInitial;
     this.audioEnabled = AUDIO_CONFIG.enabledByDefault;
+    this.currentTierConfig = GAME_CONFIG.tierConfigs[0];
+    this.activeTargets = [];
+    this.lastSpawnCellIndices = [];
+    this.animalPool = [...GAME_CONFIG.animalChoices];
+    this.decorations = {
+      clouds: [],
+      bubbles: [],
+    };
   }
 
   create() {
     this.setupState();
+    this.createBackdrop();
     this.createUi();
     this.createGrid();
     this.layout(this.scale.width, this.scale.height);
@@ -58,48 +136,133 @@ class GameScene extends Phaser.Scene {
 
   setupState() {
     this.score = 0;
+    this.tier = 1;
+    this.currentTierConfig = this.getTierConfig(1);
     this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
     this.countdownEndAt = 0;
-    this.roundMsCurrent = GAME_CONFIG.roundMsInitial;
-    this.activeCellIndex = -1;
+    this.roundMsCurrent = this.getBaseRoundMs(this.currentTierConfig);
     this.isRunning = false;
     this.roundResolved = false;
     this.audioEnabled = AUDIO_CONFIG.enabledByDefault;
+    this.activeTargets = [];
+    this.lastSpawnCellIndices = [];
+    this.animalPool = [...GAME_CONFIG.animalChoices];
+  }
+
+  createBackdrop() {
+    this.backgroundGraphics = this.add.graphics();
+    this.boardGraphics = this.add.graphics();
+
+    for (let i = 0; i < 3; i += 1) {
+      const cloud = this.createCloud();
+      this.decorations.clouds.push(cloud);
+      this.tweens.add({
+        targets: cloud,
+        x: "+=10",
+        duration: 2600 + i * 300,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    }
+
+    for (let i = 0; i < 5; i += 1) {
+      const bubble = this.add.circle(0, 0, 20, 0xffffff, 0.18);
+      this.decorations.bubbles.push(bubble);
+      this.tweens.add({
+        targets: bubble,
+        y: "-=12",
+        duration: 1800 + i * 220,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    }
+  }
+
+  createCloud() {
+    const parts = [
+      this.add.ellipse(-38, 6, 44, 28, 0xffffff, 0.88),
+      this.add.ellipse(-10, -6, 48, 34, 0xffffff, 0.92),
+      this.add.ellipse(20, 4, 56, 32, 0xffffff, 0.9),
+      this.add.ellipse(48, 10, 36, 24, 0xffffff, 0.84),
+    ];
+    return this.add.container(0, 0, parts).setAlpha(0.8);
   }
 
   createUi() {
     this.scoreText = this.add
       .text(0, 0, "スコア: 0", {
-        fontFamily: "Noto Sans JP, sans-serif",
+        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
         fontSize: "56px",
-        color: "#2a2f38",
-        fontStyle: "700",
-      })
-      .setOrigin(0.5, 0);
-
-    this.statusText = this.add
-      .text(0, 0, "スタートを おしてね", {
-        fontFamily: "Noto Sans JP, sans-serif",
-        fontSize: "34px",
-        color: "#41505f",
+        color: "#173255",
         fontStyle: "700",
       })
       .setOrigin(0.5, 0);
 
     this.timeText = this.add
       .text(0, 0, "のこり: 30", {
-        fontFamily: "Noto Sans JP, sans-serif",
+        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
         fontSize: "30px",
-        color: "#2f8f4e",
+        color: "#1b8a5a",
         fontStyle: "700",
       })
       .setOrigin(0.5, 0);
+
+    this.levelBadgeBackground = this.add.rectangle(0, 0, 182, 54, this.currentTierConfig.badgeColor, 1);
+    this.levelBadgeBackground.setStrokeStyle(3, 0xffffff, 0.95);
+    this.levelBadgeText = this.add
+      .text(0, 0, "レベル 1", {
+        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
+        fontSize: "28px",
+        color: "#173255",
+        fontStyle: "700",
+      })
+      .setOrigin(0.5);
+    this.levelBadge = this.add.container(0, 0, [this.levelBadgeBackground, this.levelBadgeText]);
+
+    this.statusText = this.add
+      .text(0, 0, "スタートを おしてね", {
+        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
+        fontSize: "34px",
+        color: "#46607f",
+        fontStyle: "700",
+      })
+      .setOrigin(0.5, 0);
+
+    this.levelBannerBackground = this.add
+      .rectangle(0, 0, 320, 110, 0xfff6b4, 0.97)
+      .setStrokeStyle(4, 0xffffff, 1);
+    this.levelBannerText = this.add
+      .text(0, 0, "レベルアップ！", {
+        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
+        fontSize: "38px",
+        color: "#173255",
+        fontStyle: "700",
+      })
+      .setOrigin(0.5);
+    this.levelBannerSparkLeft = this.add.text(-122, 0, "✨", {
+      fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif",
+      fontSize: "36px",
+    }).setOrigin(0.5);
+    this.levelBannerSparkRight = this.add.text(122, 0, "✨", {
+      fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif",
+      fontSize: "36px",
+    }).setOrigin(0.5);
+    this.levelBanner = this.add.container(0, 0, [
+      this.levelBannerBackground,
+      this.levelBannerText,
+      this.levelBannerSparkLeft,
+      this.levelBannerSparkRight,
+    ]);
+    this.levelBanner.setVisible(false).setAlpha(0).setScale(0.72).setDepth(30);
+    this.levelBannerTween = null;
 
     this.startButton = this.createButton({
       label: "スタート",
       width: 280,
       height: 94,
-      backgroundColor: 0x2f8f4e,
+      backgroundColor: 0x2d9f68,
       onPress: () => this.startGame(),
     });
 
@@ -107,17 +270,12 @@ class GameScene extends Phaser.Scene {
       label: this.getSoundLabel(),
       width: 280,
       height: 94,
-      backgroundColor: 0x3969c8,
+      backgroundColor: 0x3f6fd9,
       onPress: () => this.toggleSound(),
     });
   }
 
   createGrid() {
-    this.boardGraphics = this.add.graphics();
-    this.targetCircle = this.add.circle(0, 0, 24, 0xea2f3a).setVisible(false);
-    this.targetHalo = this.add.circle(0, 0, 38, 0xff8d96, 0.4).setVisible(false);
-    this.tapFeedbackCircle = this.add.circle(0, 0, 10, 0xffffff, 0).setVisible(false);
-
     const totalCells = GAME_CONFIG.gridSize * GAME_CONFIG.gridSize;
     for (let i = 0; i < totalCells; i += 1) {
       const zone = this.add.zone(0, 0, 10, 10).setInteractive({ useHandCursor: false });
@@ -130,11 +288,11 @@ class GameScene extends Phaser.Scene {
   createButton({ label, width, height, backgroundColor, onPress }) {
     const background = this.add
       .rectangle(0, 0, width, height, backgroundColor)
-      .setStrokeStyle(4, 0xffffff, 0.9)
+      .setStrokeStyle(4, 0xffffff, 0.92)
       .setInteractive({ useHandCursor: true });
     const text = this.add
       .text(0, 0, label, {
-        fontFamily: "Noto Sans JP, sans-serif",
+        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
         fontSize: "36px",
         color: "#ffffff",
         fontStyle: "700",
@@ -194,16 +352,20 @@ class GameScene extends Phaser.Scene {
 
   startGame() {
     this.clearTimers();
+    this.clearActiveTargets(false);
     this.isRunning = true;
     this.roundResolved = true;
     this.score = 0;
+    this.tier = 1;
+    this.currentTierConfig = this.getTierConfig(1);
+    this.roundMsCurrent = this.getBaseRoundMs(this.currentTierConfig);
     this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
     this.countdownEndAt = this.time.now + GAME_CONFIG.gameDurationMs;
-    this.roundMsCurrent = GAME_CONFIG.roundMsInitial;
-    this.activeCellIndex = -1;
+    this.lastSpawnCellIndices = [];
     this.updateScoreText();
     this.updateTimeText();
-    this.setStatusText("あかいまるを タップ！");
+    this.updateTierUi();
+    this.setStatusText(GAME_CONFIG.statusMessages.ready);
     this.startButton.text.setText("もういちど");
 
     this.gameTimer = this.time.delayedCall(GAME_CONFIG.gameDurationMs, () => this.finishGame());
@@ -212,60 +374,119 @@ class GameScene extends Phaser.Scene {
       loop: true,
       callback: () => this.updateRemainingTime(),
     });
-    this.spawnTarget();
+    this.spawnTargets();
   }
 
-  spawnTarget() {
+  getTierConfig(tier) {
+    return GAME_CONFIG.tierConfigs[Math.max(0, Math.min(GAME_CONFIG.tierConfigs.length - 1, tier - 1))];
+  }
+
+  getBaseRoundMs(tierConfig = this.currentTierConfig) {
+    return Math.round(GAME_CONFIG.roundMsInitial * tierConfig.roundMsMultiplier);
+  }
+
+  spawnTargets() {
     if (!this.isRunning) {
       return;
     }
 
-    const nextCellIndex = this.pickNextCellIndex();
-    this.activeCellIndex = nextCellIndex;
+    this.clearActiveTargets(false);
     this.roundResolved = false;
 
-    const center = this.cellCenters[nextCellIndex];
-    const radius = Math.max(16, center.size * 0.2);
-    this.targetCircle.setRadius(radius);
-    this.targetCircle.setPosition(center.x, center.y);
-    this.targetCircle.setVisible(true);
+    const targetCount = this.currentTierConfig.targetCount;
+    const cellIndices = this.pickNextCellIndices(targetCount);
+    this.lastSpawnCellIndices = [...cellIndices];
+    cellIndices.forEach((cellIndex) => this.createAnimalTarget(cellIndex));
 
-    this.targetHalo.setRadius(radius * 1.65);
-    this.targetHalo.setPosition(center.x, center.y);
-    this.targetHalo.setVisible(true);
+    this.roundTimer = this.time.delayedCall(this.roundMsCurrent, () => this.handleMissTimeout());
+  }
 
-    if (this.targetPulseTween) {
-      this.targetPulseTween.stop();
-    }
-    this.targetPulseTween = this.tweens.add({
-      targets: this.targetHalo,
-      alpha: { from: 0.55, to: 0.2 },
-      scale: { from: 1.0, to: 1.15 },
-      duration: 380,
+  createAnimalTarget(cellIndex) {
+    const center = this.cellCenters[cellIndex];
+    const animal = Phaser.Utils.Array.GetRandom(this.animalPool);
+    const haloRadius = Math.max(24, center.size * 0.28 * this.currentTierConfig.targetScale);
+    const fontSize = Math.round(center.size * 0.46 * this.currentTierConfig.targetScale);
+
+    const halo = this.add.circle(center.x, center.y, haloRadius, this.currentTierConfig.haloColor, 0.78);
+    const node = this.add
+      .text(center.x, center.y, animal, {
+        fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, Hiragino Sans, sans-serif",
+        fontSize: `${fontSize}px`,
+      })
+      .setOrigin(0.5)
+      .setScale(0.56)
+      .setAlpha(0);
+
+    const popTween = this.tweens.add({
+      targets: [halo, node],
+      alpha: { from: 0, to: 1 },
+      scale: { from: 0.56, to: 1 },
+      duration: 180,
+      ease: "Back.easeOut",
+    });
+    const haloTween = this.tweens.add({
+      targets: halo,
+      scale: { from: 1, to: 1.09 },
+      alpha: { from: 0.72, to: 0.48 },
+      duration: 420,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+    const bobTween = this.tweens.add({
+      targets: node,
+      y: center.y - Math.max(4, center.size * 0.045),
+      duration: 580,
       yoyo: true,
       repeat: -1,
       ease: "Sine.easeInOut",
     });
 
-    this.roundTimer = this.time.delayedCall(this.roundMsCurrent, () => this.handleMissTimeout());
+    this.activeTargets.push({
+      cellIndex,
+      animal,
+      halo,
+      node,
+      popTween,
+      haloTween,
+      bobTween,
+      scaleFactor: this.currentTierConfig.targetScale,
+    });
   }
 
   handleHit(cellIndex) {
-    if (!this.isRunning || this.roundResolved || cellIndex !== this.activeCellIndex) {
+    if (!this.isRunning || this.roundResolved) {
+      return;
+    }
+
+    const hitTarget = this.activeTargets.find((target) => target.cellIndex === cellIndex);
+    if (!hitTarget) {
+      return;
+    }
+
+    this.score += 1;
+
+    const leveledUp = this.updateTierFromScore();
+    this.updateScoreText();
+    this.updateDifficulty(true);
+    this.playCue(leveledUp ? "levelUp" : "hit");
+    this.showSuccessBurst(this.cellCenters[cellIndex], this.currentTierConfig.badgeColor);
+    this.removeTarget(hitTarget, true, true);
+
+    const remainingTargets = this.activeTargets.length;
+    if (leveledUp) {
+      this.playLevelUpFeedback();
+    }
+
+    if (remainingTargets > 0) {
+      this.setStatusText(leveledUp ? "レベルアップ！" : `もう ${remainingTargets} ぴき！`);
       return;
     }
 
     this.roundResolved = true;
-    this.score += 1;
-    this.updateScoreText();
-    this.updateDifficulty(true);
-    this.playTone(AUDIO_CONFIG.toneHitHz, AUDIO_CONFIG.volumeHit);
-    this.setStatusText("いいね！");
-    this.showTapFeedback(this.cellCenters[cellIndex], 0x7fdc8e);
-    this.hideTarget();
-
     this.clearRoundTimers();
-    this.nextSpawnTimer = this.time.delayedCall(GAME_CONFIG.spawnDelayMs, () => this.spawnTarget());
+    this.setStatusText(leveledUp ? "レベルアップ！" : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.hit));
+    this.nextSpawnTimer = this.time.delayedCall(this.currentTierConfig.spawnDelayMs, () => this.spawnTargets());
   }
 
   handleMissTimeout() {
@@ -275,13 +496,14 @@ class GameScene extends Phaser.Scene {
 
     this.roundResolved = true;
     this.updateDifficulty(false);
-    this.playTone(AUDIO_CONFIG.toneMissHz, AUDIO_CONFIG.volumeMiss);
-    this.setStatusText("つぎ いくよ！");
-    this.showTapFeedback(this.cellCenters[this.activeCellIndex], 0xff9f9f);
-    this.hideTarget();
-
+    this.playCue("miss");
+    this.setStatusText(Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.miss));
+    if (this.activeTargets[0]) {
+      this.showTapFeedback(this.cellCenters[this.activeTargets[0].cellIndex], 0xbccdf7);
+    }
+    this.clearActiveTargets(true);
     this.clearRoundTimers();
-    this.nextSpawnTimer = this.time.delayedCall(GAME_CONFIG.spawnDelayMs + 40, () => this.spawnTarget());
+    this.nextSpawnTimer = this.time.delayedCall(this.currentTierConfig.spawnDelayMs + 40, () => this.spawnTargets());
   }
 
   onCellPressed(cellIndex) {
@@ -289,31 +511,55 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (cellIndex === this.activeCellIndex) {
+    if (this.activeTargets.some((target) => target.cellIndex === cellIndex)) {
       this.handleHit(cellIndex);
       return;
     }
 
-    this.showTapFeedback(this.cellCenters[cellIndex], 0xa2b0ff);
+    this.showTapFeedback(this.cellCenters[cellIndex], 0x9ab7ff);
+  }
+
+  updateTierFromScore() {
+    const nextTier = Math.min(4, Math.floor(this.score / 10) + 1);
+    if (nextTier === this.tier) {
+      return false;
+    }
+
+    this.tier = nextTier;
+    this.currentTierConfig = this.getTierConfig(nextTier);
+    const nextBaseRoundMs = this.getBaseRoundMs(this.currentTierConfig);
+    this.roundMsCurrent = Phaser.Math.Clamp(
+      Math.min(this.roundMsCurrent, nextBaseRoundMs),
+      this.currentTierConfig.minRoundMs,
+      nextBaseRoundMs,
+    );
+    this.updateTierUi();
+    return true;
   }
 
   updateDifficulty(didHit) {
+    const baseRoundMs = this.getBaseRoundMs();
     if (didHit) {
       this.roundMsCurrent = Math.max(
-        GAME_CONFIG.roundMsMin,
+        this.currentTierConfig.minRoundMs,
         this.roundMsCurrent - GAME_CONFIG.roundMsStep,
       );
       return;
     }
 
     this.roundMsCurrent = Math.min(
-      GAME_CONFIG.roundMsInitial,
-      this.roundMsCurrent + GAME_CONFIG.assistMsOnMiss,
+      baseRoundMs,
+      this.roundMsCurrent + this.currentTierConfig.assistMsOnMiss,
     );
   }
 
   updateScoreText() {
     this.scoreText.setText(`スコア: ${this.score}`);
+  }
+
+  updateTierUi() {
+    this.levelBadgeText.setText(`レベル ${this.tier}`);
+    this.levelBadgeBackground.fillColor = this.currentTierConfig.badgeColor;
   }
 
   updateRemainingTime() {
@@ -324,7 +570,6 @@ class GameScene extends Phaser.Scene {
     const msLeft = Math.max(0, this.countdownEndAt - this.time.now);
     this.remainingTimeMs = msLeft;
     this.updateTimeText();
-
     if (msLeft <= 0) {
       this.finishGame();
     }
@@ -348,17 +593,41 @@ class GameScene extends Phaser.Scene {
     this.roundResolved = true;
     this.remainingTimeMs = 0;
     this.updateTimeText();
-    this.hideTarget();
+    this.playCue("finish");
+    this.clearActiveTargets(true);
     this.clearTimers();
-    this.setStatusText("おしまい！ もういちど");
+    this.setStatusText(GAME_CONFIG.statusMessages.finish);
     this.startButton.text.setText("もういちど");
+  }
+
+  playLevelUpFeedback() {
+    if (this.levelBannerTween) {
+      this.levelBannerTween.stop();
+      this.levelBannerTween = null;
+    }
+
+    this.levelBannerText.setText(`レベル ${this.tier}!`);
+    this.levelBanner.setVisible(true).setAlpha(0).setScale(0.72);
+    this.levelBannerTween = this.tweens.add({
+      targets: this.levelBanner,
+      alpha: { from: 0, to: 1 },
+      scale: { from: 0.72, to: 1 },
+      duration: 200,
+      ease: "Back.easeOut",
+      yoyo: true,
+      hold: 360,
+      onComplete: () => {
+        this.levelBanner.setVisible(false).setAlpha(0).setScale(0.72);
+        this.levelBannerTween = null;
+      },
+    });
   }
 
   toggleSound() {
     this.audioEnabled = !this.audioEnabled;
     this.soundButton.text.setText(this.getSoundLabel());
     if (this.audioEnabled) {
-      this.playTone(660, 0.035, 70);
+      this.playCue("toggle");
     }
   }
 
@@ -366,30 +635,37 @@ class GameScene extends Phaser.Scene {
     return this.audioEnabled ? "おと: ON" : "おと: OFF";
   }
 
-  playTone(frequencyHz, gainAmount, durationMs = AUDIO_CONFIG.toneDurationMs) {
+  playCue(name) {
     if (!this.audioEnabled) {
       return;
     }
 
+    const cue = AUDIO_CONFIG.cues[name];
+    if (!cue) {
+      return;
+    }
+
+    cue.forEach((tone) => this.playTone(tone));
+  }
+
+  playTone(tone) {
     const context = this.sound.context;
     if (!context) {
       return;
     }
-
     if (context.state === "suspended") {
       context.resume().catch(() => {});
     }
 
     const oscillator = context.createOscillator();
     const gain = context.createGain();
-    const now = context.currentTime;
-    const volume = Phaser.Math.Clamp(gainAmount, 0, 0.12);
-    const release = Math.max(0.02, durationMs / 1000);
+    const now = context.currentTime + ((tone.startOffsetMs ?? 0) / 1000);
+    const release = Math.max(0.02, tone.durationMs / 1000);
 
-    oscillator.frequency.setValueAtTime(frequencyHz, now);
-    oscillator.type = "sine";
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(volume, now + 0.01);
+    oscillator.frequency.setValueAtTime(tone.frequencyHz, now);
+    oscillator.type = tone.wave ?? "sine";
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(tone.volume, now + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + release);
 
     oscillator.connect(gain);
@@ -403,44 +679,107 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.tapFeedbackCircle
-      .setPosition(cell.x, cell.y)
-      .setRadius(Math.max(12, cell.size * 0.1))
-      .setFillStyle(color, 0.6)
-      .setScale(1)
-      .setVisible(true);
+    const bubble = this.add.circle(cell.x, cell.y, Math.max(12, cell.size * 0.09), color, 0.52);
+    this.tweens.add({
+      targets: bubble,
+      alpha: 0,
+      scale: 1.85,
+      duration: 180,
+      onComplete: () => bubble.destroy(),
+    });
+  }
+
+  showSuccessBurst(cell, color) {
+    if (!cell) {
+      return;
+    }
+
+    const burstCount = 6;
+    for (let i = 0; i < burstCount; i += 1) {
+      const angle = Phaser.Math.DegToRad((360 / burstCount) * i);
+      const sparkle = i % 2 === 0
+        ? this.add.text(cell.x, cell.y, "✨", {
+            fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif",
+            fontSize: `${Math.round(cell.size * 0.16)}px`,
+          }).setOrigin(0.5)
+        : this.add.circle(cell.x, cell.y, Math.max(6, cell.size * 0.045), color, 0.85);
+      const distance = Math.max(24, cell.size * 0.23);
+      this.tweens.add({
+        targets: sparkle,
+        x: cell.x + Math.cos(angle) * distance,
+        y: cell.y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: 1.4,
+        duration: 260,
+        ease: "Quad.easeOut",
+        onComplete: () => sparkle.destroy(),
+      });
+    }
+  }
+
+  stopTargetTweens(target) {
+    if (target.popTween) {
+      target.popTween.stop();
+    }
+    if (target.haloTween) {
+      target.haloTween.stop();
+    }
+    if (target.bobTween) {
+      target.bobTween.stop();
+    }
+  }
+
+  removeTarget(targetToRemove, animate, isHit = false) {
+    if (!targetToRemove) {
+      return;
+    }
+
+    this.activeTargets = this.activeTargets.filter((target) => target !== targetToRemove);
+    this.stopTargetTweens(targetToRemove);
+
+    if (!animate) {
+      targetToRemove.halo.destroy();
+      targetToRemove.node.destroy();
+      return;
+    }
 
     this.tweens.add({
-      targets: this.tapFeedbackCircle,
+      targets: [targetToRemove.halo, targetToRemove.node],
       alpha: 0,
-      scale: 1.8,
-      duration: 180,
+      scale: isHit ? 1.24 : 0.8,
+      duration: isHit ? 180 : 140,
+      ease: "Quad.easeOut",
       onComplete: () => {
-        this.tapFeedbackCircle.setVisible(false).setAlpha(1);
+        targetToRemove.halo.destroy();
+        targetToRemove.node.destroy();
       },
     });
   }
 
-  hideTarget() {
-    if (this.targetPulseTween) {
-      this.targetPulseTween.stop();
-      this.targetPulseTween = null;
-    }
-    this.targetCircle.setVisible(false);
-    this.targetHalo.setVisible(false).setScale(1).setAlpha(0.4);
+  clearActiveTargets(animate, hitCellIndex = null) {
+    const targets = [...this.activeTargets];
+    this.activeTargets = [];
+
+    targets.forEach((target) => {
+      const isHit = hitCellIndex !== null && target.cellIndex === hitCellIndex;
+      this.removeTarget(target, animate, isHit);
+    });
   }
 
-  pickNextCellIndex() {
-    const max = GAME_CONFIG.gridSize * GAME_CONFIG.gridSize;
-    if (max <= 1) {
-      return 0;
+  pickNextCellIndices(count) {
+    const totalCells = GAME_CONFIG.gridSize * GAME_CONFIG.gridSize;
+    const candidates = [];
+    for (let i = 0; i < totalCells; i += 1) {
+      if (!this.lastSpawnCellIndices.includes(i)) {
+        candidates.push(i);
+      }
     }
 
-    let nextIndex = Phaser.Math.Between(0, max - 1);
-    if (nextIndex === this.activeCellIndex) {
-      nextIndex = (nextIndex + Phaser.Math.Between(1, max - 1)) % max;
-    }
-    return nextIndex;
+    const pool = candidates.length >= count
+      ? Phaser.Utils.Array.Shuffle(candidates)
+      : Phaser.Utils.Array.Shuffle([...Array(totalCells).keys()]);
+
+    return pool.slice(0, count);
   }
 
   clearRoundTimers() {
@@ -473,7 +812,7 @@ class GameScene extends Phaser.Scene {
   layout(width, height) {
     const w = Math.max(320, width);
     const h = Math.max(480, height);
-    const topArea = Math.max(208, h * 0.26);
+    const topArea = Math.max(244, h * 0.29);
     const bottomArea = Math.max(180, h * 0.24);
     const availableBoardHeight = Math.max(220, h - topArea - bottomArea - 24);
     const boardSize = Math.min(w * 0.9, availableBoardHeight);
@@ -481,20 +820,26 @@ class GameScene extends Phaser.Scene {
     const boardTop = topArea + Math.max(8, (availableBoardHeight - boardSize) * 0.5);
     const cellSize = boardSize / GAME_CONFIG.gridSize;
 
-    const scoreFontSize = Phaser.Math.Clamp(Math.round(w * 0.105), 40, 56);
-    const timeFontSize = Phaser.Math.Clamp(Math.round(w * 0.058), 24, 32);
-    const statusFontSize = Phaser.Math.Clamp(Math.round(w * 0.062), 28, 36);
+    this.layoutBackdrop(w, h, boardLeft, boardTop, boardSize);
+
+    const scoreFontSize = Phaser.Math.Clamp(Math.round(w * 0.102), 38, 56);
+    const timeFontSize = Phaser.Math.Clamp(Math.round(w * 0.056), 24, 32);
+    const badgeScale = Phaser.Math.Clamp(w / 768, 0.82, 1);
+    const statusFontSize = Phaser.Math.Clamp(Math.round(w * 0.06), 26, 36);
     this.scoreText.setFontSize(scoreFontSize);
     this.timeText.setFontSize(timeFontSize);
     this.statusText.setFontSize(statusFontSize);
-    this.scoreText.setPosition(w * 0.5, Math.max(18, topArea * 0.06));
+    this.levelBadgeText.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.04), 22, 28));
+    this.levelBadge.setScale(badgeScale);
 
+    this.scoreText.setPosition(w * 0.5, Math.max(18, topArea * 0.05));
     const scoreBottom = this.scoreText.y + this.scoreText.height;
-    const timeTop = scoreBottom + Math.max(6, h * 0.008);
-    this.timeText.setPosition(w * 0.5, timeTop);
+    this.timeText.setPosition(w * 0.5, scoreBottom + Math.max(6, h * 0.006));
     const timeBottom = this.timeText.y + this.timeText.height;
-    const statusTop = timeBottom + Math.max(6, h * 0.008);
-    this.statusText.setPosition(w * 0.5, statusTop);
+    this.levelBadge.setPosition(w * 0.5, timeBottom + 30);
+    const badgeBottom = this.levelBadge.y + (54 * badgeScale) * 0.5;
+    this.statusText.setPosition(w * 0.5, badgeBottom + Math.max(12, h * 0.01));
+    this.levelBanner.setPosition(w * 0.5, boardTop + boardSize * 0.42);
 
     const buttonsY = h - bottomArea * 0.5;
     const sidePadding = Phaser.Math.Clamp(w * 0.028, 10, 20);
@@ -516,19 +861,7 @@ class GameScene extends Phaser.Scene {
     this.startButton.container.setPosition(sidePadding + buttonWidth * 0.5, buttonsY);
     this.soundButton.container.setPosition(w - sidePadding - buttonWidth * 0.5, buttonsY);
 
-    this.boardGraphics.clear();
-    this.boardGraphics.fillStyle(0xffffff, 0.9);
-    this.boardGraphics.fillRoundedRect(boardLeft, boardTop, boardSize, boardSize, 24);
-    this.boardGraphics.lineStyle(5, 0xeadcc6, 1);
-    this.boardGraphics.strokeRoundedRect(boardLeft, boardTop, boardSize, boardSize, 24);
-
-    this.boardGraphics.lineStyle(3, 0xe8d9bf, 1);
-    for (let i = 1; i < GAME_CONFIG.gridSize; i += 1) {
-      const lineX = boardLeft + i * cellSize;
-      const lineY = boardTop + i * cellSize;
-      this.boardGraphics.lineBetween(lineX, boardTop, lineX, boardTop + boardSize);
-      this.boardGraphics.lineBetween(boardLeft, lineY, boardLeft + boardSize, lineY);
-    }
+    this.drawBoard(boardLeft, boardTop, boardSize, cellSize);
 
     for (let row = 0; row < GAME_CONFIG.gridSize; row += 1) {
       for (let col = 0; col < GAME_CONFIG.gridSize; col += 1) {
@@ -538,26 +871,113 @@ class GameScene extends Phaser.Scene {
         this.cellCenters[index] = { x: centerX, y: centerY, size: cellSize };
         this.cellZones[index]
           .setPosition(centerX, centerY)
-          .setSize(cellSize * 1.12, cellSize * 1.12)
+          .setSize(cellSize * 1.08, cellSize * 1.08)
           .setInteractive();
       }
     }
 
-    if (this.activeCellIndex >= 0 && this.targetCircle.visible) {
-      const center = this.cellCenters[this.activeCellIndex];
-      const radius = Math.max(16, center.size * 0.2);
-      this.targetCircle.setPosition(center.x, center.y).setRadius(radius);
-      this.targetHalo.setPosition(center.x, center.y).setRadius(radius * 1.65);
+    this.syncActiveTargetsToLayout();
+  }
+
+  layoutBackdrop(width, height, boardLeft, boardTop, boardSize) {
+    this.backgroundGraphics.clear();
+    this.backgroundGraphics.fillStyle(0xffffff, 0.18);
+    this.backgroundGraphics.fillCircle(width * 0.15, height * 0.14, width * 0.11);
+    this.backgroundGraphics.fillCircle(width * 0.82, height * 0.22, width * 0.085);
+    this.backgroundGraphics.fillCircle(width * 0.87, height * 0.6, width * 0.09);
+    this.backgroundGraphics.fillStyle(0xfef7d2, 0.38);
+    this.backgroundGraphics.fillCircle(width * 0.18, boardTop + boardSize * 0.76, width * 0.065);
+    this.backgroundGraphics.fillCircle(width * 0.78, boardTop + boardSize * 0.84, width * 0.055);
+
+    const cloudPositions = [
+      { x: width * 0.2, y: height * 0.12, scale: 0.78 },
+      { x: width * 0.8, y: height * 0.16, scale: 0.68 },
+      { x: width * 0.52, y: boardTop - Math.max(18, boardSize * 0.12), scale: 0.64 },
+    ];
+    this.decorations.clouds.forEach((cloud, index) => {
+      const spec = cloudPositions[index];
+      cloud.setPosition(spec.x, spec.y).setScale(spec.scale);
+    });
+
+    const bubblePositions = [
+      { x: width * 0.08, y: boardTop + boardSize * 0.14, radius: width * 0.022, alpha: 0.22 },
+      { x: width * 0.92, y: boardTop + boardSize * 0.2, radius: width * 0.018, alpha: 0.2 },
+      { x: width * 0.12, y: boardTop + boardSize * 0.54, radius: width * 0.028, alpha: 0.18 },
+      { x: width * 0.88, y: boardTop + boardSize * 0.64, radius: width * 0.022, alpha: 0.17 },
+      { x: width * 0.5, y: boardTop + boardSize + Math.max(30, height * 0.04), radius: width * 0.026, alpha: 0.15 },
+    ];
+    this.decorations.bubbles.forEach((bubble, index) => {
+      const spec = bubblePositions[index];
+      bubble.setPosition(spec.x, spec.y).setRadius(spec.radius).setAlpha(spec.alpha);
+    });
+  }
+
+  drawBoard(boardLeft, boardTop, boardSize, cellSize) {
+    this.boardGraphics.clear();
+    this.boardGraphics.fillStyle(0xffffff, 0.18);
+    this.boardGraphics.fillRoundedRect(boardLeft + 8, boardTop + 14, boardSize, boardSize, 30);
+    this.boardGraphics.fillStyle(0xf9fcff, 0.97);
+    this.boardGraphics.fillRoundedRect(boardLeft, boardTop, boardSize, boardSize, 30);
+    this.boardGraphics.lineStyle(5, 0xc9ddff, 1);
+    this.boardGraphics.strokeRoundedRect(boardLeft, boardTop, boardSize, boardSize, 30);
+
+    for (let row = 0; row < GAME_CONFIG.gridSize; row += 1) {
+      for (let col = 0; col < GAME_CONFIG.gridSize; col += 1) {
+        const cellX = boardLeft + col * cellSize;
+        const cellY = boardTop + row * cellSize;
+        const fillColor = (row + col) % 2 === 0 ? 0xfefefe : 0xf4f9ff;
+        this.boardGraphics.fillStyle(fillColor, 1);
+        this.boardGraphics.fillRect(cellX + 2, cellY + 2, cellSize - 4, cellSize - 4);
+      }
     }
+
+    this.boardGraphics.lineStyle(3, 0xdbe7f7, 1);
+    for (let i = 1; i < GAME_CONFIG.gridSize; i += 1) {
+      const lineX = boardLeft + i * cellSize;
+      const lineY = boardTop + i * cellSize;
+      this.boardGraphics.lineBetween(lineX, boardTop, lineX, boardTop + boardSize);
+      this.boardGraphics.lineBetween(boardLeft, lineY, boardLeft + boardSize, lineY);
+    }
+  }
+
+  syncActiveTargetsToLayout() {
+    this.activeTargets.forEach((target) => {
+      const center = this.cellCenters[target.cellIndex];
+      const haloRadius = Math.max(24, center.size * 0.28 * target.scaleFactor);
+      const fontSize = Math.round(center.size * 0.46 * target.scaleFactor);
+      target.halo.setPosition(center.x, center.y).setRadius(haloRadius);
+      target.node
+        .setPosition(center.x, center.y)
+        .setFontSize(`${fontSize}px`);
+    });
   }
 
   onResize(gameSize) {
     this.layout(gameSize.width, gameSize.height);
   }
 
+  snapshotState() {
+    return {
+      mode: this.isRunning ? "playing" : "idle",
+      score: this.score,
+      tier: this.tier,
+      remainingTimeSec: Math.ceil(Math.max(0, this.remainingTimeMs) / 1000),
+      roundMsCurrent: this.roundMsCurrent,
+      status: this.statusText?.text ?? "",
+      activeTargets: this.activeTargets.map((target) => ({
+        cellIndex: target.cellIndex,
+        animal: target.animal,
+      })),
+      buttons: {
+        start: this.startButton?.text?.text ?? "",
+        sound: this.soundButton?.text?.text ?? "",
+      },
+    };
+  }
+
   shutdown() {
     this.clearTimers();
-    this.hideTarget();
+    this.clearActiveTargets(false);
     this.scale.off("resize", this.onResize, this);
   }
 }
@@ -565,7 +985,7 @@ class GameScene extends Phaser.Scene {
 const phaserConfig = {
   type: Phaser.AUTO,
   parent: "game-root",
-  backgroundColor: "#fff7e8",
+  backgroundColor: "#bfeaff",
   width: 768,
   height: 1024,
   scene: [BootScene, GameScene],
@@ -595,15 +1015,21 @@ window.addEventListener("resize", updateRotateHint);
 window.addEventListener("orientationchange", updateRotateHint);
 
 window.addEventListener("load", () => {
-  // Phaser のスクリプト読み込み完了後にのみゲームを初期化する。
   if (!window.Phaser) {
     throw new Error("Phaser の読み込みに失敗しました。ネットワーク接続を確認してください。");
   }
   const game = new Phaser.Game(phaserConfig);
   updateRotateHint();
-  // 最小スモークや将来のE2Eで参照できるよう、グローバルに公開する。
   window.__reflexesGame = game;
   window.__reflexesGameUi = {
     updateRotateHint,
+    getScene() {
+      return game.scene.keys.GameScene ?? null;
+    },
+    renderGameToText() {
+      const scene = game.scene.keys.GameScene;
+      return JSON.stringify(scene ? scene.snapshotState() : { mode: "booting" });
+    },
   };
+  window.render_game_to_text = () => window.__reflexesGameUi.renderGameToText();
 });

@@ -1,6 +1,6 @@
 :root {
   color-scheme: only light;
-  --bg: #fff7e8;
+  --bg: #d8f4ff;
   --overlay: rgba(38, 39, 44, 0.9);
   --text: #2a2f38;
 }
@@ -15,7 +15,10 @@ body {
   padding: 0;
   width: 100%;
   height: 100%;
-  background: radial-gradient(circle at top, #fff9ef 0%, var(--bg) 60%, #fbe8c7 100%);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0) 22%),
+    radial-gradient(circle at 82% 16%, rgba(255, 255, 255, 0.82) 0%, rgba(255, 255, 255, 0) 19%),
+    linear-gradient(180deg, #b8eaff 0%, var(--bg) 62%, #fdf6cf 100%);
   touch-action: manipulation;
   font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
 }
