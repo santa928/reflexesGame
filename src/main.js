@@ -1,3 +1,5 @@
+import { buildCloudButtonSpec, hexToNumber } from "./buttonStyle.js";
+
 const GAME_CONFIG = Object.freeze({
   gridSize: 3,
   gameDurationMs: 30000,
@@ -286,38 +288,158 @@ class GameScene extends Phaser.Scene {
   }
 
   createButton({ label, width, height, backgroundColor, onPress }) {
-    const background = this.add
-      .rectangle(0, 0, width, height, backgroundColor)
-      .setStrokeStyle(4, 0xffffff, 0.92)
-      .setInteractive({ useHandCursor: true });
+    const kind = backgroundColor === 0x3f6fd9 ? "sound" : "start";
+    const spec = buildCloudButtonSpec({
+      kind,
+      labelText: label,
+      soundEnabled: this.audioEnabled,
+    });
+    const shadow = this.add.graphics();
+    const front = this.add.graphics();
+    const focusOutline = this.add.graphics().setAlpha(0);
+    const sheen = this.add.graphics().setAlpha(0.8);
+    const icon = this.add
+      .text(0, 0, spec.label.icon, {
+        fontFamily: spec.label.iconFontFamily,
+        fontSize: `${spec.label.iconFontSize}px`,
+      })
+      .setOrigin(0.5);
     const text = this.add
-      .text(0, 0, label, {
-        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
-        fontSize: "36px",
-        color: "#ffffff",
+      .text(0, 0, spec.label.text, {
+        fontFamily: spec.label.fontFamily,
+        fontSize: `${spec.label.fontSize}px`,
+        color: spec.label.textColor,
+        stroke: spec.label.textStrokeColor,
+        strokeThickness: spec.label.textStrokeThickness,
         fontStyle: "700",
       })
       .setOrigin(0.5);
-
-    const container = this.add.container(0, 0, [background, text]);
+    const faceLayer = this.add.container(0, 0, [front, sheen, icon, text]);
+    const hitArea = this.add
+      .rectangle(0, 0, width, height, 0xffffff, 0.001)
+      .setInteractive({ useHandCursor: true });
+    const container = this.add.container(0, 0, [shadow, focusOutline, faceLayer, hitArea]);
     container.setSize(width, height);
 
     const button = {
+      kind,
       container,
-      background,
+      shadow,
+      front,
+      sheen,
+      focusOutline,
+      faceLayer,
+      icon,
       text,
+      hitArea,
       baseWidth: width,
       baseHeight: height,
       baseScale: 1,
       pressTween: null,
+      hoverTween: null,
+      homePosition: { x: 0, y: 0 },
+      isHovered: false,
+      spec,
     };
 
-    background.on("pointerdown", () => {
+    this.updateButtonVisual(button, label);
+
+    hitArea.on("pointerover", () => {
+      button.isHovered = true;
+      this.refreshButtonRestingState(button);
+    });
+    hitArea.on("pointerout", () => {
+      button.isHovered = false;
+      this.refreshButtonRestingState(button);
+    });
+    hitArea.on("pointerdown", () => {
       this.playButtonPress(button);
       onPress();
     });
 
     return button;
+  }
+
+  drawCloudLayer(graphics, spec, fillColor, strokeColor, offsetY = 0) {
+    const { baseRect, topPuffs, bottomPuffs } = spec.shape;
+    graphics.clear();
+    graphics.fillStyle(hexToNumber(fillColor), 1);
+    graphics.fillRoundedRect(baseRect.x, baseRect.y + offsetY, baseRect.width, baseRect.height, baseRect.radius);
+    [...topPuffs, ...bottomPuffs].forEach((puff) => {
+      graphics.fillCircle(puff.x, puff.y + offsetY, puff.radius);
+    });
+    graphics.lineStyle(3, hexToNumber(strokeColor), 0.9);
+    graphics.strokeRoundedRect(
+      baseRect.x,
+      baseRect.y + offsetY,
+      baseRect.width,
+      baseRect.height,
+      baseRect.radius,
+    );
+  }
+
+  drawCloudSheen(graphics, spec) {
+    graphics.clear();
+    spec.shape.sheen.forEach((ellipse) => {
+      graphics.fillStyle(0xffffff, ellipse.alpha);
+      graphics.fillEllipse(ellipse.x, ellipse.y, ellipse.width, ellipse.height);
+    });
+  }
+
+  drawFocusOutline(graphics, spec) {
+    const { baseRect, topPuffs, bottomPuffs } = spec.shape;
+    const outlineColor = spec.interaction.focusOutlineColor;
+    graphics.clear();
+    graphics.lineStyle(5, outlineColor, 0.95);
+    graphics.strokeRoundedRect(
+      baseRect.x - 6,
+      baseRect.y - 6,
+      baseRect.width + 12,
+      baseRect.height + 12,
+      baseRect.radius + 8,
+    );
+    [...topPuffs, ...bottomPuffs].forEach((puff) => {
+      graphics.strokeCircle(puff.x, puff.y, puff.radius + 6);
+    });
+  }
+
+  updateButtonVisual(button, labelText = button.text.text) {
+    const spec = buildCloudButtonSpec({
+      kind: button.kind,
+      labelText,
+      soundEnabled: this.audioEnabled,
+    });
+    button.spec = spec;
+    this.drawCloudLayer(button.shadow, spec, spec.colors.shadowFill, spec.colors.outlineColor, spec.layers.shadow.offsetY);
+    this.drawCloudLayer(button.front, spec, spec.colors.frontFill, spec.colors.outlineColor, spec.layers.front.offsetY);
+    this.drawCloudSheen(button.sheen, spec);
+    this.drawFocusOutline(button.focusOutline, spec);
+    button.icon.setText(spec.label.icon).setPosition(-54, -4).setFontSize(spec.label.iconFontSize);
+    button.text
+      .setText(spec.label.text)
+      .setPosition(22, 0)
+      .setFontFamily(spec.label.fontFamily)
+      .setFontSize(spec.label.fontSize)
+      .setColor(spec.label.textColor)
+      .setStroke(spec.label.textStrokeColor, spec.label.textStrokeThickness);
+    this.refreshButtonRestingState(button);
+  }
+
+  setButtonPosition(button, x, y) {
+    button.homePosition.x = x;
+    button.homePosition.y = y;
+    this.refreshButtonRestingState(button);
+  }
+
+  refreshButtonRestingState(button) {
+    const hoverScale = button.isHovered ? button.spec.interaction.hoverScale : 1;
+    const hoverLiftY = button.isHovered ? button.spec.interaction.hoverLiftY : 0;
+    button.container.setScale(button.baseScale * hoverScale);
+    button.container.setPosition(button.homePosition.x, button.homePosition.y + hoverLiftY);
+    button.focusOutline.setAlpha(button.isHovered ? 0.95 : 0);
+    if (!button.pressTween) {
+      button.faceLayer.y = 0;
+    }
   }
 
   setButtonBaseScale(button, scale) {
@@ -326,7 +448,7 @@ class GameScene extends Phaser.Scene {
       button.pressTween = null;
     }
     button.baseScale = scale;
-    button.container.setScale(scale);
+    this.refreshButtonRestingState(button);
   }
 
   playButtonPress(button) {
@@ -335,17 +457,23 @@ class GameScene extends Phaser.Scene {
       button.pressTween = null;
     }
 
-    button.container.setScale(button.baseScale);
-    const pressedScale = button.baseScale * 0.94;
+    this.refreshButtonRestingState(button);
+    const hoverScale = button.isHovered ? button.spec.interaction.hoverScale : 1;
+    const pressedScale = button.baseScale * hoverScale * button.spec.interaction.pressScale;
     button.pressTween = this.tweens.add({
       targets: button.container,
       scaleX: pressedScale,
       scaleY: pressedScale,
+      onStart: () => {
+        button.faceLayer.y = button.spec.interaction.pressOffsetY;
+      },
       yoyo: true,
       duration: 90,
+      ease: "Back.easeOut",
       onComplete: () => {
         button.pressTween = null;
-        button.container.setScale(button.baseScale);
+        button.faceLayer.y = 0;
+        this.refreshButtonRestingState(button);
       },
     });
   }
@@ -366,7 +494,7 @@ class GameScene extends Phaser.Scene {
     this.updateTimeText();
     this.updateTierUi();
     this.setStatusText(GAME_CONFIG.statusMessages.ready);
-    this.startButton.text.setText("もういちど");
+    this.updateButtonVisual(this.startButton, "もういちど");
 
     this.gameTimer = this.time.delayedCall(GAME_CONFIG.gameDurationMs, () => this.finishGame());
     this.countdownTickTimer = this.time.addEvent({
@@ -597,7 +725,7 @@ class GameScene extends Phaser.Scene {
     this.clearActiveTargets(true);
     this.clearTimers();
     this.setStatusText(GAME_CONFIG.statusMessages.finish);
-    this.startButton.text.setText("もういちど");
+    this.updateButtonVisual(this.startButton, "もういちど");
   }
 
   playLevelUpFeedback() {
@@ -625,14 +753,14 @@ class GameScene extends Phaser.Scene {
 
   toggleSound() {
     this.audioEnabled = !this.audioEnabled;
-    this.soundButton.text.setText(this.getSoundLabel());
+    this.updateButtonVisual(this.soundButton, this.getSoundLabel());
     if (this.audioEnabled) {
       this.playCue("toggle");
     }
   }
 
   getSoundLabel() {
-    return this.audioEnabled ? "おと: ON" : "おと: OFF";
+    return this.audioEnabled ? "おと ON" : "おと OFF";
   }
 
   playCue(name) {
@@ -858,8 +986,8 @@ class GameScene extends Phaser.Scene {
 
     this.setButtonBaseScale(this.startButton, buttonScale);
     this.setButtonBaseScale(this.soundButton, buttonScale);
-    this.startButton.container.setPosition(sidePadding + buttonWidth * 0.5, buttonsY);
-    this.soundButton.container.setPosition(w - sidePadding - buttonWidth * 0.5, buttonsY);
+    this.setButtonPosition(this.startButton, sidePadding + buttonWidth * 0.5, buttonsY);
+    this.setButtonPosition(this.soundButton, w - sidePadding - buttonWidth * 0.5, buttonsY);
 
     this.drawBoard(boardLeft, boardTop, boardSize, cellSize);
 
