@@ -16,10 +16,10 @@ const GAME_CONFIG = Object.freeze({
   roundMsInitial: 1800,
   roundMsStep: 40,
   statusMessages: {
-    ready: "BREACH WINDOW OPEN",
-    hit: ["NODE BREACHED", "TRACE CLEAR", "LINK CLEAN"],
-    miss: ["TRACE LOST", "SIGNAL DROP"],
-    finish: "CONNECTION LOST",
+    ready: "ひかったら タッチ!",
+    hit: ["ピカッ!", "やった!", "いいぞ!"],
+    miss: ["おしい!", "あれれ?"],
+    finish: "おしまい!",
   },
   tierConfigs: [
     {
@@ -93,6 +93,8 @@ const AUDIO_CONFIG = Object.freeze({
     ],
   },
 });
+
+const UI_FONT_STACK = "'Hiragino Maru Gothic ProN', 'Hiragino Sans', sans-serif";
 
 function setGlow(target, color, blur = 10, distance = 0, alpha = 0.85) {
   target.setShadow(distance, 0, color, blur, false, true);
@@ -205,15 +207,15 @@ class GameScene extends Phaser.Scene {
   }
 
   createUi() {
-    this.scoreText = setGlow(this.add.text(0, 0, "BREACH LEVEL 00", {
-      fontFamily: "'Courier New', monospace",
+    this.scoreText = setGlow(this.add.text(0, 0, "てんすう 00", {
+      fontFamily: UI_FONT_STACK,
       fontSize: "54px",
       color: NEON_THEME.palette.text,
       fontStyle: "700",
     }).setOrigin(0.5, 0), "#22d3ee");
 
-    this.timeText = setGlow(this.add.text(0, 0, "UPTIME 30.0s", {
-      fontFamily: "'Courier New', monospace",
+    this.timeText = setGlow(this.add.text(0, 0, "じかん 30.0びょう", {
+      fontFamily: UI_FONT_STACK,
       fontSize: "32px",
       color: NEON_THEME.palette.hud,
       fontStyle: "700",
@@ -221,16 +223,16 @@ class GameScene extends Phaser.Scene {
 
     this.levelBadgeBackground = this.add.rectangle(0, 0, 180, 48, this.currentTierConfig.badgeColor, 0.18)
       .setStrokeStyle(2, this.currentTierConfig.badgeColor, 0.9);
-    this.levelBadgeText = this.add.text(0, 0, "SECTOR 1", {
-      fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
+    this.levelBadgeText = this.add.text(0, 0, "レベル 1", {
+      fontFamily: UI_FONT_STACK,
       fontSize: "24px",
       color: "#f8fafc",
       fontStyle: "700",
     }).setOrigin(0.5);
     this.levelBadge = this.add.container(0, 0, [this.levelBadgeBackground, this.levelBadgeText]).setDepth(18);
 
-    this.statusText = this.add.text(0, 0, "BREACH WINDOW OPEN", {
-      fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
+    this.statusText = this.add.text(0, 0, "ひかったら タッチ!", {
+      fontFamily: UI_FONT_STACK,
       fontSize: "28px",
       color: "#b8e9ff",
       fontStyle: "700",
@@ -239,8 +241,8 @@ class GameScene extends Phaser.Scene {
 
     this.levelBannerBackground = this.add.rectangle(0, 0, 360, 102, 0x081121, 0.92)
       .setStrokeStyle(3, hexToNumber(NEON_THEME.palette.level), 0.95);
-    this.levelBannerText = this.add.text(0, 0, "SECURITY OVERDRIVE!", {
-      fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
+    this.levelBannerText = this.add.text(0, 0, "レベルアップ!", {
+      fontFamily: UI_FONT_STACK,
       fontSize: "38px",
       color: "#fef08a",
       fontStyle: "700",
@@ -255,15 +257,15 @@ class GameScene extends Phaser.Scene {
 
     this.overlayCardBackground = this.add.rectangle(0, 0, 320, 170, 0x081121, 0.76)
       .setStrokeStyle(3, hexToNumber(NEON_THEME.palette.gridGlow), 0.9);
-    this.overlayHeadline = this.add.text(0, -28, "SYSTEM STANDBY...", {
-      fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
+    this.overlayHeadline = this.add.text(0, -28, "じゅんびちゅう...", {
+      fontFamily: UI_FONT_STACK,
       fontSize: "34px",
       color: "#f8fafc",
       fontStyle: "700",
     }).setOrigin(0.5);
     this.overlayHeadline.setShadow(0, 0, "#22d3ee", 16, false, true);
-    this.overlaySubline = this.add.text(0, 34, "Await [ INITIATE ]", {
-      fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
+    this.overlaySubline = this.add.text(0, 34, "スタートを おしてね", {
+      fontFamily: UI_FONT_STACK,
       fontSize: "18px",
       color: "#bae6fd",
       fontStyle: "700",
@@ -286,7 +288,7 @@ class GameScene extends Phaser.Scene {
 
     this.startButton = this.createButton({
       kind: "start",
-      label: "[ INITIATE ]",
+      label: "スタート",
       onPress: () => this.startGame(),
     });
 
@@ -477,9 +479,9 @@ class GameScene extends Phaser.Scene {
     this.updateScoreText(false);
     this.updateTimeText();
     this.updateTierUi();
-    this.setStatusText("LINK ESTABLISHED.", NEON_THEME.palette.hud);
+    this.setStatusText("スタート!", NEON_THEME.palette.hud);
     this.updateOverlayState("playing");
-    this.updateButtonVisual(this.startButton, "[ REBOOT ]");
+    this.updateButtonVisual(this.startButton, "もういっかい");
 
     this.gameTimer = this.time.delayedCall(GAME_CONFIG.gameDurationMs, () => this.finishGame());
     this.countdownTickTimer = this.time.addEvent({
@@ -642,14 +644,17 @@ class GameScene extends Phaser.Scene {
     }
 
     if (remainingTargets > 0) {
-      this.setStatusText(leveledUp ? "SECURITY OVERDRIVE!" : `NODE X${remainingTargets}`, leveledUp ? "#fde047" : "#a5f3fc");
+      this.setStatusText(
+        leveledUp ? "レベルアップ!" : `あと ${remainingTargets}こ!`,
+        leveledUp ? "#fde047" : "#a5f3fc",
+      );
       return;
     }
 
     this.roundResolved = true;
     this.clearRoundTimers();
     this.setStatusText(
-      leveledUp ? "SECURITY OVERDRIVE!" : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.hit),
+      leveledUp ? "レベルアップ!" : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.hit),
       leveledUp ? "#fde047" : NEON_THEME.palette.success,
     );
     this.nextSpawnTimer = this.time.delayedCall(this.currentTierConfig.spawnDelayMs, () => this.spawnTargets());
@@ -686,7 +691,7 @@ class GameScene extends Phaser.Scene {
 
     this.cameras.main.shake(60, 0.004);
     this.showTapFeedback(this.cellCenters[cellIndex], hexToNumber(NEON_THEME.palette.warning));
-    this.setStatusText("MISS", NEON_THEME.palette.warning);
+    this.setStatusText("ざんねん!", NEON_THEME.palette.warning);
   }
 
   updateTierFromScore() {
@@ -739,7 +744,7 @@ class GameScene extends Phaser.Scene {
   }
 
   updateTierUi() {
-    this.levelBadgeText.setText(`SECTOR ${this.tier}`);
+    this.levelBadgeText.setText(`レベル ${this.tier}`);
     this.levelBadgeBackground.fillColor = this.currentTierConfig.badgeColor;
     this.levelBadgeBackground.setStrokeStyle(2, this.currentTierConfig.badgeColor, 0.95);
   }
@@ -797,7 +802,7 @@ class GameScene extends Phaser.Scene {
     this.clearActiveTargets(true);
     this.clearTimers();
     this.setStatusText(GAME_CONFIG.statusMessages.finish, NEON_THEME.palette.warning);
-    this.updateButtonVisual(this.startButton, "[ REBOOT ]");
+    this.updateButtonVisual(this.startButton, "もういっかい");
     this.updateOverlayState("finished");
   }
 
@@ -808,7 +813,7 @@ class GameScene extends Phaser.Scene {
     }
 
     this.flashScreen("#facc15", 0.16, 160);
-    this.levelBannerText.setText("SECURITY OVERDRIVE!");
+    this.levelBannerText.setText("レベルアップ!");
     this.levelBanner.setVisible(true).setAlpha(0).setScale(0.7);
     this.levelBannerTween = this.tweens.add({
       targets: this.levelBanner,
@@ -834,7 +839,7 @@ class GameScene extends Phaser.Scene {
   }
 
   getSoundLabel() {
-    return this.audioEnabled ? "[ AUDIO ON ]" : "[ AUDIO OFF ]";
+    return this.audioEnabled ? "おと: あり" : "おと: なし";
   }
 
   playCue(name) {

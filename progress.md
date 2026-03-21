@@ -32,3 +32,8 @@ TODO
 - HUD / オーバーレイ / ボタン文言を `BREACH LEVEL`, `UPTIME`, `SYSTEM STANDBY...`, `[ INITIATE ]`, `[ AUDIO OFF ]` に統一した。
 - Docker 上で `node --test tests/button-style.test.mjs tests/theme-style.test.mjs tests/target-style.test.mjs` を実行し、12件すべて通過した。
 - Playwright で `tmp/ui-check/cyber-mobile-idle-v2.png`, `tmp/ui-check/cyber-mobile-playing.png`, `tmp/ui-check/cyber-tablet-idle.png`, `tmp/ui-check/cyber-tablet-playing.png` を保存し、待機/プレイ中ともに世界観が統一されていることを確認した。
+- `docs/plans/2026-03-21-kids-japanese-copy-design.md` と `docs/plans/2026-03-21-kids-japanese-copy-implementation.md` を追加し、3歳向け日本語コピー化の方針と実装手順を記録した。
+- UI文言を 3 歳向けのやさしい日本語へ統一した。`てんすう`, `じかん`, `じゅんびちゅう...`, `スタート`, `おしまい!`, `もういっかい` などに差し替えた。
+- `src/buttonStyle.js` のボタンフォントを丸ゴ寄りへ変更し、日本語ラベルでも読みにくくならないよう字間を詰めた。
+- Docker 上で `node --test tests/theme-style.test.mjs tests/button-style.test.mjs tests/target-style.test.mjs` と `node --check src/main.js` を実行し、文言差し替え後も通過することを確認した。
+- Playwright で `tmp/ui-check/japanese-mobile-idle.png`, `tmp/ui-check/japanese-mobile-playing.png`, `tmp/ui-check/japanese-tablet-idle.png`, `tmp/ui-check/japanese-tablet-playing.png` を保存し、`390x844` と `768x1024` で日本語文言の配置崩れがないことを確認した。

@@ -29,7 +29,7 @@ const BASE_SHAPE = Object.freeze({
 
 const KIND_CONFIG = Object.freeze({
   start: Object.freeze({
-    defaultLabel: "[ INITIATE ]",
+    defaultLabel: "スタート",
     shellFill: "#082F49",
     coreFill: "#0F172A",
     accentColor: "#67E8F9",
@@ -37,7 +37,7 @@ const KIND_CONFIG = Object.freeze({
     outlineColor: "#7DD3FC",
   }),
   soundOff: Object.freeze({
-    defaultLabel: "[ AUDIO OFF ]",
+    defaultLabel: "おと: なし",
     shellFill: "#3F1022",
     coreFill: "#190B16",
     accentColor: "#FB7185",
@@ -45,7 +45,7 @@ const KIND_CONFIG = Object.freeze({
     outlineColor: "#FDA4AF",
   }),
   soundOn: Object.freeze({
-    defaultLabel: "[ AUDIO ON ]",
+    defaultLabel: "おと: あり",
     shellFill: "#052E2B",
     coreFill: "#071A19",
     accentColor: "#34D399",
@@ -78,9 +78,9 @@ export function buildArcadeButtonSpec({ kind, labelText, soundEnabled = false })
     label: {
       text: labelText ?? config.defaultLabel,
       textColor: "#E6F7FF",
-      fontFamily: "'Courier New', 'Arial Black', sans-serif",
+      fontFamily: "'Hiragino Maru Gothic ProN', 'Hiragino Sans', sans-serif",
       fontSize: 28,
-      letterSpacing: 6,
+      letterSpacing: 2,
     },
     interaction: {
       hoverScale: 1.04,

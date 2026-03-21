@@ -24,20 +24,20 @@ test("countdown switches to urgent color only in the final five seconds", () => 
 
 test("overlay copy exposes start and finish headlines", () => {
   assert.deepEqual(getOverlayCopy("idle"), {
-    headline: "SYSTEM STANDBY...",
-    subline: "Await [ INITIATE ]",
+    headline: "じゅんびちゅう...",
+    subline: "スタートを おしてね",
   });
   assert.deepEqual(getOverlayCopy("finished"), {
-    headline: "CONNECTION TERMINATED.",
-    subline: "FINAL BREACH LEVEL",
+    headline: "おしまい!",
+    subline: "きみの てんすう",
   });
 });
 
 test("hud formatting uses breach level and uptime strings", () => {
-  assert.equal(formatBreachLevel(0), "BREACH LEVEL 00");
-  assert.equal(formatBreachLevel(7), "BREACH LEVEL 07");
-  assert.equal(formatUptime(30000), "UPTIME 30.0s");
-  assert.equal(formatUptime(4500), "UPTIME 4.5s");
+  assert.equal(formatBreachLevel(0), "てんすう 00");
+  assert.equal(formatBreachLevel(7), "てんすう 07");
+  assert.equal(formatUptime(30000), "じかん 30.0びょう");
+  assert.equal(formatUptime(4500), "じかん 4.5びょう");
 });
 
 test("bottom controls keep healthy margins on mobile portrait", () => {

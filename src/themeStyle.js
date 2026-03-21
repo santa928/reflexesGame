@@ -24,16 +24,16 @@ export const NEON_THEME = Object.freeze({
 
 const OVERLAY_COPY = Object.freeze({
   idle: Object.freeze({
-    headline: "SYSTEM STANDBY...",
-    subline: "Await [ INITIATE ]",
+    headline: "じゅんびちゅう...",
+    subline: "スタートを おしてね",
   }),
   playing: Object.freeze({
     headline: "",
     subline: "",
   }),
   finished: Object.freeze({
-    headline: "CONNECTION TERMINATED.",
-    subline: "FINAL BREACH LEVEL",
+    headline: "おしまい!",
+    subline: "きみの てんすう",
   }),
 });
 
@@ -50,11 +50,11 @@ export function getOverlayCopy(mode) {
 }
 
 export function formatBreachLevel(score) {
-  return `BREACH LEVEL ${String(score).padStart(2, "0")}`;
+  return `てんすう ${String(score).padStart(2, "0")}`;
 }
 
 export function formatUptime(remainingMs) {
-  return `UPTIME ${(Math.max(0, remainingMs) / 1000).toFixed(1)}s`;
+  return `じかん ${(Math.max(0, remainingMs) / 1000).toFixed(1)}びょう`;
 }
 
 export function computeBottomControlLayout({
