@@ -43,3 +43,12 @@ TODO
 - `src/main.js` はラベルの `letterSpacing` と `offsetX/offsetY` を仕様から反映するよう変更した。
 - Docker 上で `node --test tests/button-style.test.mjs tests/theme-style.test.mjs tests/target-style.test.mjs` と `node --check src/main.js` を実行し、修正後も通過することを確認した。
 - Playwright で `tmp/ui-check/button-balance-mobile-idle.png` と `tmp/ui-check/button-balance-tablet-idle.png` を保存し、`390x844` と `768x1024` の両方でボタン内部の左右バランスが改善したことを確認した。
+- `docs/plans/2026-03-21-async-target-spawn-design.md` と `docs/plans/2026-03-21-async-target-spawn-implementation.md` を追加し、Tier3/Tier4 の非同期共存スポーン方針と実装手順を記録した。
+- `src/spawnLogic.js` と `tests/spawn-logic.test.mjs` を追加し、Tier ごとの最大共存数、予約不足数、セル選択制約を pure helper とテストで固定した。
+- `src/main.js` のラウンド制をやめ、`spawnReservationCount` と個体ごとの `expireTimer` でスポーンを管理する方式へ置き換えた。Tier3 は最大 2 体、Tier4 は最大 3 体まで時間差で増えるようにした。
+- 見逃し処理を全消去ではなく個体単位へ寄せ、1 体ヒットしても 1 体見逃しても残りターゲットが盤面に残るようにした。
+- `README.md` を更新し、Tier1-4 の共存数仕様、非同期スポーン仕様、検証観点、ファイル構成を現行実装へ合わせた。
+- Docker 上で `node --test tests/spawn-logic.test.mjs tests/button-style.test.mjs tests/theme-style.test.mjs tests/target-style.test.mjs` と `node --check src/main.js` を実行し、16件すべて通過した。
+- Playwright で `score 19 -> 20` から Tier3 の 2 体共存、`29 -> 30` から Tier4 の 3 体共存を再現し、ヒット後・見逃し後も残りターゲットが消えないことを確認した。
+- `390x844` と `768x1024` で `tmp/ui-check/async-tier3-mobile.png`, `tmp/ui-check/async-tier4-mobile.png`, `tmp/ui-check/async-tier3-tablet.png`, `tmp/ui-check/async-tier4-tablet.png` を保存し、HUD・盤面・下部ボタンの重なりやはみ出しがないことを確認した。
+- Playwright のコンソールログは Phaser の起動ログのみで、Errors 0 / Warnings 0 を確認した。

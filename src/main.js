@@ -7,6 +7,11 @@ import {
   getOverlayCopy,
   getTimeStyle,
 } from "./themeStyle.js";
+import {
+  computeMissingSpawnReservations,
+  getConcurrentTargetLimit,
+  pickSpawnCellIndex,
+} from "./spawnLogic.js";
 import { NODE_VARIANTS, buildNodeTargetSpec } from "./targetStyle.js";
 
 const GAME_CONFIG = Object.freeze({
@@ -51,7 +56,7 @@ const GAME_CONFIG = Object.freeze({
       minScore: 20,
       targetCount: 2,
       roundMsMultiplier: 0.84,
-      spawnDelayMs: 170,
+      spawnDelayMs: 220,
       targetScale: 0.93,
       minRoundMs: 760,
       assistMsOnMiss: 60,
@@ -61,9 +66,9 @@ const GAME_CONFIG = Object.freeze({
     {
       tier: 4,
       minScore: 30,
-      targetCount: 2,
+      targetCount: 3,
       roundMsMultiplier: 0.76,
-      spawnDelayMs: 150,
+      spawnDelayMs: 160,
       targetScale: 0.86,
       minRoundMs: 680,
       assistMsOnMiss: 50,
@@ -117,12 +122,11 @@ class GameScene extends Phaser.Scene {
     super("GameScene");
     this.cellCenters = [];
     this.cellZones = [];
-    this.roundTimer = null;
-    this.nextSpawnTimer = null;
+    this.spawnTimers = [];
+    this.spawnReservationCount = 0;
     this.gameTimer = null;
     this.countdownTickTimer = null;
     this.isRunning = false;
-    this.roundResolved = false;
     this.score = 0;
     this.tier = 1;
     this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
@@ -159,7 +163,8 @@ class GameScene extends Phaser.Scene {
     this.countdownEndAt = 0;
     this.roundMsCurrent = this.getBaseRoundMs(this.currentTierConfig);
     this.isRunning = false;
-    this.roundResolved = false;
+    this.spawnTimers = [];
+    this.spawnReservationCount = 0;
     this.audioEnabled = AUDIO_CONFIG.enabledByDefault;
     this.activeTargets = [];
     this.lastSpawnCellIndices = [];
@@ -472,7 +477,7 @@ class GameScene extends Phaser.Scene {
     this.clearTimers();
     this.clearActiveTargets(false);
     this.isRunning = true;
-    this.roundResolved = true;
+    this.spawnReservationCount = 0;
     this.score = 0;
     this.tier = 1;
     this.currentTierConfig = this.getTierConfig(1);
@@ -494,7 +499,7 @@ class GameScene extends Phaser.Scene {
       loop: true,
       callback: () => this.updateRemainingTime(),
     });
-    this.spawnTargets();
+    this.ensureTargetCapacity();
   }
 
   getTierConfig(tier) {
@@ -505,26 +510,69 @@ class GameScene extends Phaser.Scene {
     return Math.round(GAME_CONFIG.roundMsInitial * tierConfig.roundMsMultiplier);
   }
 
-  spawnTargets() {
+  ensureTargetCapacity() {
     if (!this.isRunning) {
       return;
     }
 
-    this.clearActiveTargets(false);
-    this.roundResolved = false;
+    const missingReservations = computeMissingSpawnReservations({
+      tier: this.tier,
+      activeCount: this.activeTargets.length,
+      reservedCount: this.spawnReservationCount,
+    });
+    const projectedCountBase = this.activeTargets.length + this.spawnReservationCount;
 
-    const targetCount = this.currentTierConfig.targetCount;
-    const cellIndices = this.pickNextCellIndices(targetCount);
-    this.lastSpawnCellIndices = [...cellIndices];
-    cellIndices.forEach((cellIndex) => this.createNodeTarget(cellIndex));
-
-    this.roundTimer = this.time.delayedCall(this.roundMsCurrent, () => this.handleMissTimeout());
+    for (let offset = 0; offset < missingReservations; offset += 1) {
+      const projectedCount = projectedCountBase + offset;
+      const delayMs = projectedCount === 0 ? 0 : this.currentTierConfig.spawnDelayMs * projectedCount;
+      this.scheduleSpawn(delayMs);
+    }
   }
 
-  createNodeTarget(cellIndex) {
+  scheduleSpawn(delayMs) {
+    this.spawnReservationCount += 1;
+    const spawnTimer = this.time.delayedCall(delayMs, () => {
+      this.spawnTimers = this.spawnTimers.filter((timer) => timer !== spawnTimer);
+      this.spawnReservationCount = Math.max(0, this.spawnReservationCount - 1);
+
+      if (!this.isRunning) {
+        return;
+      }
+
+      if (this.activeTargets.length >= getConcurrentTargetLimit(this.tier)) {
+        return;
+      }
+
+      this.spawnSingleTarget();
+      this.ensureTargetCapacity();
+    });
+    this.spawnTimers.push(spawnTimer);
+  }
+
+  spawnSingleTarget() {
+    const cellIndex = pickSpawnCellIndex({
+      totalCells: GAME_CONFIG.gridSize * GAME_CONFIG.gridSize,
+      activeCellIndices: this.activeTargets.map((target) => target.cellIndex),
+      recentCellIndices: this.lastSpawnCellIndices,
+      random: () => Phaser.Math.FloatBetween(0, 0.999999),
+    });
+
+    if (cellIndex === null) {
+      return null;
+    }
+
+    this.lastSpawnCellIndices = [...this.lastSpawnCellIndices.slice(-3), cellIndex];
+    return this.createNodeTarget(cellIndex, {
+      tier: this.tier,
+      tierConfig: this.currentTierConfig,
+      lifespanMs: this.roundMsCurrent,
+    });
+  }
+
+  createNodeTarget(cellIndex, { tier = this.tier, tierConfig = this.currentTierConfig, lifespanMs = this.roundMsCurrent } = {}) {
     const center = this.cellCenters[cellIndex];
     const variantId = Phaser.Utils.Array.GetRandom(this.nodeVariantPool);
-    const targetSpec = buildNodeTargetSpec({ variantId, tier: this.tier });
+    const targetSpec = buildNodeTargetSpec({ variantId, tier });
     const container = this.add.container(center.x, center.y).setDepth(26);
     const glow = this.add.rectangle(0, 0, 10, 10, hexToNumber(targetSpec.palette.glowColor), targetSpec.geometry.glowDiamond.alpha)
       .setAngle(45)
@@ -552,7 +600,7 @@ class GameScene extends Phaser.Scene {
         spec: targetSpec,
       },
       center,
-      this.currentTierConfig.targetScale,
+      tierConfig.targetScale,
     );
     container.setScale(0.1).setAlpha(0);
 
@@ -590,7 +638,7 @@ class GameScene extends Phaser.Scene {
       ease: "Sine.easeInOut",
     });
 
-    this.activeTargets.push({
+    const target = {
       cellIndex,
       variantId,
       container,
@@ -604,8 +652,13 @@ class GameScene extends Phaser.Scene {
       spinTween,
       pulseTween,
       scanTween,
-      scaleFactor: this.currentTierConfig.targetScale,
-    });
+      scaleFactor: tierConfig.targetScale,
+      expireTimer: null,
+      spawnedAt: this.time.now,
+    };
+    target.expireTimer = this.time.delayedCall(lifespanMs, () => this.handleTargetExpired(target));
+    this.activeTargets.push(target);
+    return target;
   }
 
   applyTargetVisualScale(target, center, scaleFactor) {
@@ -625,7 +678,7 @@ class GameScene extends Phaser.Scene {
   }
 
   handleHit(cellIndex) {
-    if (!this.isRunning || this.roundResolved) {
+    if (!this.isRunning) {
       return;
     }
 
@@ -642,50 +695,43 @@ class GameScene extends Phaser.Scene {
     this.playCue(leveledUp ? "levelUp" : "hit");
     this.showSuccessBurst(this.cellCenters[cellIndex], this.currentTierConfig.badgeColor);
     this.removeTarget(hitTarget, true, true);
+    this.ensureTargetCapacity();
 
-    const remainingTargets = this.activeTargets.length;
     if (leveledUp) {
       this.playLevelUpFeedback();
     }
 
-    if (remainingTargets > 0) {
-      this.setStatusText(
-        leveledUp ? "レベルアップ!" : `あと ${remainingTargets}こ!`,
-        leveledUp ? "#fde047" : "#a5f3fc",
-      );
-      return;
-    }
-
-    this.roundResolved = true;
-    this.clearRoundTimers();
     this.setStatusText(
-      leveledUp ? "レベルアップ!" : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.hit),
-      leveledUp ? "#fde047" : NEON_THEME.palette.success,
+      leveledUp
+        ? "レベルアップ!"
+        : this.activeTargets.length > 0
+          ? `あと ${this.activeTargets.length}こ!`
+          : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.hit),
+      leveledUp
+        ? "#fde047"
+        : this.activeTargets.length > 0
+          ? "#a5f3fc"
+          : NEON_THEME.palette.success,
     );
-    this.nextSpawnTimer = this.time.delayedCall(this.currentTierConfig.spawnDelayMs, () => this.spawnTargets());
   }
 
-  handleMissTimeout() {
-    if (!this.isRunning || this.roundResolved) {
+  handleTargetExpired(target) {
+    if (!this.isRunning || !this.activeTargets.includes(target)) {
       return;
     }
 
-    this.roundResolved = true;
     this.updateDifficulty(false);
     this.playCue("miss");
     this.cameras.main.shake(90, 0.006);
     this.flashScreen(NEON_THEME.palette.warning, 0.14, 120);
     this.setStatusText(Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.miss), NEON_THEME.palette.warning);
-    if (this.activeTargets[0]) {
-      this.showTapFeedback(this.cellCenters[this.activeTargets[0].cellIndex], hexToNumber(NEON_THEME.palette.warning));
-    }
-    this.clearActiveTargets(true);
-    this.clearRoundTimers();
-    this.nextSpawnTimer = this.time.delayedCall(this.currentTierConfig.spawnDelayMs + 40, () => this.spawnTargets());
+    this.showTapFeedback(this.cellCenters[target.cellIndex], hexToNumber(NEON_THEME.palette.warning));
+    this.removeTarget(target, true, false);
+    this.ensureTargetCapacity();
   }
 
   onCellPressed(cellIndex) {
-    if (!this.isRunning || this.roundResolved) {
+    if (!this.isRunning) {
       return;
     }
 
@@ -800,12 +846,11 @@ class GameScene extends Phaser.Scene {
     }
 
     this.isRunning = false;
-    this.roundResolved = true;
     this.remainingTimeMs = 0;
     this.updateTimeText();
     this.playCue("finish");
-    this.clearActiveTargets(true);
     this.clearTimers();
+    this.clearActiveTargets(true);
     this.setStatusText(GAME_CONFIG.statusMessages.finish, NEON_THEME.palette.warning);
     this.updateButtonVisual(this.startButton, "もういっかい");
     this.updateOverlayState("finished");
@@ -961,6 +1006,10 @@ class GameScene extends Phaser.Scene {
     }
 
     this.activeTargets = this.activeTargets.filter((target) => target !== targetToRemove);
+    if (targetToRemove.expireTimer) {
+      targetToRemove.expireTimer.remove(false);
+      targetToRemove.expireTimer = null;
+    }
     this.stopTargetTweens(targetToRemove);
 
     if (!animate) {
@@ -990,31 +1039,10 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  pickNextCellIndices(count) {
-    const totalCells = GAME_CONFIG.gridSize * GAME_CONFIG.gridSize;
-    const candidates = [];
-    for (let i = 0; i < totalCells; i += 1) {
-      if (!this.lastSpawnCellIndices.includes(i)) {
-        candidates.push(i);
-      }
-    }
-
-    const pool = candidates.length >= count
-      ? Phaser.Utils.Array.Shuffle(candidates)
-      : Phaser.Utils.Array.Shuffle([...Array(totalCells).keys()]);
-
-    return pool.slice(0, count);
-  }
-
-  clearRoundTimers() {
-    if (this.roundTimer) {
-      this.roundTimer.remove(false);
-      this.roundTimer = null;
-    }
-    if (this.nextSpawnTimer) {
-      this.nextSpawnTimer.remove(false);
-      this.nextSpawnTimer = null;
-    }
+  clearSpawnTimers() {
+    this.spawnTimers.forEach((timer) => timer.remove(false));
+    this.spawnTimers = [];
+    this.spawnReservationCount = 0;
   }
 
   clearCountdownTimers() {
@@ -1029,7 +1057,7 @@ class GameScene extends Phaser.Scene {
   }
 
   clearTimers() {
-    this.clearRoundTimers();
+    this.clearSpawnTimers();
     this.clearCountdownTimers();
   }
 
@@ -1221,6 +1249,7 @@ class GameScene extends Phaser.Scene {
       tier: this.tier,
       remainingTimeSec: Math.ceil(Math.max(0, this.remainingTimeMs) / 1000),
       roundMsCurrent: this.roundMsCurrent,
+      spawnReservationCount: this.spawnReservationCount,
       status: this.statusText?.text ?? "",
       soundEnabled: this.audioEnabled,
       activeTargets: this.activeTargets.map((target) => ({
