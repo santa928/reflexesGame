@@ -29,7 +29,7 @@ const BASE_SHAPE = Object.freeze({
 
 const KIND_CONFIG = Object.freeze({
   start: Object.freeze({
-    defaultLabel: "スタート",
+    defaultLabel: "[ INITIATE ]",
     shellFill: "#082F49",
     coreFill: "#0F172A",
     accentColor: "#67E8F9",
@@ -37,7 +37,7 @@ const KIND_CONFIG = Object.freeze({
     outlineColor: "#7DD3FC",
   }),
   soundOff: Object.freeze({
-    defaultLabel: "サウンド OFF",
+    defaultLabel: "[ AUDIO OFF ]",
     shellFill: "#3F1022",
     coreFill: "#190B16",
     accentColor: "#FB7185",
@@ -45,7 +45,7 @@ const KIND_CONFIG = Object.freeze({
     outlineColor: "#FDA4AF",
   }),
   soundOn: Object.freeze({
-    defaultLabel: "サウンド ON",
+    defaultLabel: "[ AUDIO ON ]",
     shellFill: "#052E2B",
     coreFill: "#071A19",
     accentColor: "#34D399",

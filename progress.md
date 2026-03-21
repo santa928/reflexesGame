@@ -26,3 +26,9 @@ TODO
 - Docker 上で `node --check src/main.js` を実行し、構文エラーがないことを確認した。
 - Docker 上の静的サーバ + Playwright で `390x844` と `768x1024` を確認し、成果物を `tmp/ui-check/neon-mobile-idle.png`, `tmp/ui-check/neon-mobile-playing.png`, `tmp/ui-check/neon-tablet-idle.png`, `tmp/ui-check/neon-tablet-playing.png` に保存した。
 - Playwright のコンソールはアプリ例外ではなく、スクリーンショット取得時の WebGL `ReadPixels` 警告のみ確認した。
+- 下部ボタンの配置は `画面下割合ベース` だと端末比率で暴れることを確認し、`盤面下の空き + 下端セーフマージン` を基準にする純粋関数 `computeBottomControlLayout()` へ変更した。
+- `390x844` と `768x1024` でボタンが下端に沈みすぎず、盤面から離れすぎないことを `tmp/ui-check/neon-mobile-idle-layoutfix.png` と `tmp/ui-check/neon-tablet-idle-layoutfix.png` で再確認した。
+- 動物絵文字ターゲットを廃止し、`src/targetStyle.js` で `Cyber Node Hack` 用のノード仕様を追加した。ターゲットは `ひし形リング + コア + クロスヘア` へ変更した。
+- HUD / オーバーレイ / ボタン文言を `BREACH LEVEL`, `UPTIME`, `SYSTEM STANDBY...`, `[ INITIATE ]`, `[ AUDIO OFF ]` に統一した。
+- Docker 上で `node --test tests/button-style.test.mjs tests/theme-style.test.mjs tests/target-style.test.mjs` を実行し、12件すべて通過した。
+- Playwright で `tmp/ui-check/cyber-mobile-idle-v2.png`, `tmp/ui-check/cyber-mobile-playing.png`, `tmp/ui-check/cyber-tablet-idle.png`, `tmp/ui-check/cyber-tablet-playing.png` を保存し、待機/プレイ中ともに世界観が統一されていることを確認した。

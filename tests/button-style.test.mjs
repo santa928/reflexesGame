@@ -6,7 +6,7 @@ import { buildArcadeButtonSpec } from "../src/buttonStyle.js";
 test("start button uses arcade capsule geometry and cyan accent", () => {
   const spec = buildArcadeButtonSpec({ kind: "start", soundEnabled: false });
 
-  assert.equal(spec.label.text, "スタート");
+  assert.equal(spec.label.text, "[ INITIATE ]");
   assert.equal(spec.shape.body.radius, 30);
   assert.equal(spec.shape.innerBody.height, 54);
   assert.equal(spec.shape.accentBar.width, 56);
@@ -17,8 +17,8 @@ test("sound button switches accent and label with audio state", () => {
   const offSpec = buildArcadeButtonSpec({ kind: "sound", soundEnabled: false });
   const onSpec = buildArcadeButtonSpec({ kind: "sound", soundEnabled: true });
 
-  assert.equal(offSpec.label.text, "サウンド OFF");
-  assert.equal(onSpec.label.text, "サウンド ON");
+  assert.equal(offSpec.label.text, "[ AUDIO OFF ]");
+  assert.equal(onSpec.label.text, "[ AUDIO ON ]");
   assert.equal(offSpec.colors.accentColor, "#FB7185");
   assert.equal(onSpec.colors.accentColor, "#34D399");
   assert.notEqual(offSpec.colors.coreFill, onSpec.colors.coreFill);

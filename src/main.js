@@ -1,5 +1,13 @@
 import { buildArcadeButtonSpec, hexToNumber } from "./buttonStyle.js";
-import { NEON_THEME, getOverlayCopy, getTimeStyle } from "./themeStyle.js";
+import {
+  NEON_THEME,
+  computeBottomControlLayout,
+  formatBreachLevel,
+  formatUptime,
+  getOverlayCopy,
+  getTimeStyle,
+} from "./themeStyle.js";
+import { NODE_VARIANTS, buildNodeTargetSpec } from "./targetStyle.js";
 
 const GAME_CONFIG = Object.freeze({
   gridSize: 3,
@@ -7,12 +15,11 @@ const GAME_CONFIG = Object.freeze({
   countdownTickMs: 100,
   roundMsInitial: 1800,
   roundMsStep: 40,
-  animalChoices: ["🐶", "🐱", "🐰", "🐤", "🐸"],
   statusMessages: {
-    ready: "TARGET LOCK",
-    hit: ["LOCK!", "NICE!", "COMBO!"],
-    miss: ["MISS", "HURRY UP"],
-    finish: "TIME UP",
+    ready: "BREACH WINDOW OPEN",
+    hit: ["NODE BREACHED", "TRACE CLEAR", "LINK CLEAN"],
+    miss: ["TRACE LOST", "SIGNAL DROP"],
+    finish: "CONNECTION LOST",
   },
   tierConfigs: [
     {
@@ -123,7 +130,7 @@ class GameScene extends Phaser.Scene {
     this.currentTierConfig = GAME_CONFIG.tierConfigs[0];
     this.activeTargets = [];
     this.lastSpawnCellIndices = [];
-    this.animalPool = [...GAME_CONFIG.animalChoices];
+    this.nodeVariantPool = NODE_VARIANTS.map((variant) => variant.id);
     this.lastUrgentSecond = null;
     this.overlayMode = "idle";
     this.decorations = {
@@ -154,7 +161,7 @@ class GameScene extends Phaser.Scene {
     this.audioEnabled = AUDIO_CONFIG.enabledByDefault;
     this.activeTargets = [];
     this.lastSpawnCellIndices = [];
-    this.animalPool = [...GAME_CONFIG.animalChoices];
+    this.nodeVariantPool = NODE_VARIANTS.map((variant) => variant.id);
     this.lastUrgentSecond = null;
     this.overlayMode = "idle";
   }
@@ -198,14 +205,14 @@ class GameScene extends Phaser.Scene {
   }
 
   createUi() {
-    this.scoreText = setGlow(this.add.text(0, 0, "SCORE 0", {
+    this.scoreText = setGlow(this.add.text(0, 0, "BREACH LEVEL 00", {
       fontFamily: "'Courier New', monospace",
       fontSize: "54px",
       color: NEON_THEME.palette.text,
       fontStyle: "700",
     }).setOrigin(0.5, 0), "#22d3ee");
 
-    this.timeText = setGlow(this.add.text(0, 0, "TIME 30", {
+    this.timeText = setGlow(this.add.text(0, 0, "UPTIME 30.0s", {
       fontFamily: "'Courier New', monospace",
       fontSize: "32px",
       color: NEON_THEME.palette.hud,
@@ -214,7 +221,7 @@ class GameScene extends Phaser.Scene {
 
     this.levelBadgeBackground = this.add.rectangle(0, 0, 180, 48, this.currentTierConfig.badgeColor, 0.18)
       .setStrokeStyle(2, this.currentTierConfig.badgeColor, 0.9);
-    this.levelBadgeText = this.add.text(0, 0, "LEVEL 1", {
+    this.levelBadgeText = this.add.text(0, 0, "SECTOR 1", {
       fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
       fontSize: "24px",
       color: "#f8fafc",
@@ -222,7 +229,7 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.levelBadge = this.add.container(0, 0, [this.levelBadgeBackground, this.levelBadgeText]).setDepth(18);
 
-    this.statusText = this.add.text(0, 0, "TARGET LOCK", {
+    this.statusText = this.add.text(0, 0, "BREACH WINDOW OPEN", {
       fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
       fontSize: "28px",
       color: "#b8e9ff",
@@ -232,7 +239,7 @@ class GameScene extends Phaser.Scene {
 
     this.levelBannerBackground = this.add.rectangle(0, 0, 360, 102, 0x081121, 0.92)
       .setStrokeStyle(3, hexToNumber(NEON_THEME.palette.level), 0.95);
-    this.levelBannerText = this.add.text(0, 0, "LEVEL UP", {
+    this.levelBannerText = this.add.text(0, 0, "SECURITY OVERDRIVE!", {
       fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
       fontSize: "38px",
       color: "#fef08a",
@@ -248,16 +255,16 @@ class GameScene extends Phaser.Scene {
 
     this.overlayCardBackground = this.add.rectangle(0, 0, 320, 170, 0x081121, 0.76)
       .setStrokeStyle(3, hexToNumber(NEON_THEME.palette.gridGlow), 0.9);
-    this.overlayHeadline = this.add.text(0, -28, "READY?", {
+    this.overlayHeadline = this.add.text(0, -28, "SYSTEM STANDBY...", {
       fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
-      fontSize: "42px",
+      fontSize: "34px",
       color: "#f8fafc",
       fontStyle: "700",
     }).setOrigin(0.5);
     this.overlayHeadline.setShadow(0, 0, "#22d3ee", 16, false, true);
-    this.overlaySubline = this.add.text(0, 34, "タップでスタート", {
+    this.overlaySubline = this.add.text(0, 34, "Await [ INITIATE ]", {
       fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
-      fontSize: "20px",
+      fontSize: "18px",
       color: "#bae6fd",
       fontStyle: "700",
       align: "center",
@@ -279,7 +286,7 @@ class GameScene extends Phaser.Scene {
 
     this.startButton = this.createButton({
       kind: "start",
-      label: "スタート",
+      label: "[ INITIATE ]",
       onPress: () => this.startGame(),
     });
 
@@ -470,9 +477,9 @@ class GameScene extends Phaser.Scene {
     this.updateScoreText(false);
     this.updateTimeText();
     this.updateTierUi();
-    this.setStatusText(GAME_CONFIG.statusMessages.ready, NEON_THEME.palette.hud);
+    this.setStatusText("LINK ESTABLISHED.", NEON_THEME.palette.hud);
     this.updateOverlayState("playing");
-    this.updateButtonVisual(this.startButton, "リトライ");
+    this.updateButtonVisual(this.startButton, "[ REBOOT ]");
 
     this.gameTimer = this.time.delayedCall(GAME_CONFIG.gameDurationMs, () => this.finishGame());
     this.countdownTickTimer = this.time.addEvent({
@@ -502,52 +509,74 @@ class GameScene extends Phaser.Scene {
     const targetCount = this.currentTierConfig.targetCount;
     const cellIndices = this.pickNextCellIndices(targetCount);
     this.lastSpawnCellIndices = [...cellIndices];
-    cellIndices.forEach((cellIndex) => this.createAnimalTarget(cellIndex));
+    cellIndices.forEach((cellIndex) => this.createNodeTarget(cellIndex));
 
     this.roundTimer = this.time.delayedCall(this.roundMsCurrent, () => this.handleMissTimeout());
   }
 
-  createAnimalTarget(cellIndex) {
+  createNodeTarget(cellIndex) {
     const center = this.cellCenters[cellIndex];
-    const animal = Phaser.Utils.Array.GetRandom(this.animalPool);
-    const radius = Math.max(24, center.size * 0.29 * this.currentTierConfig.targetScale);
-    const fontSize = Math.round(center.size * 0.48 * this.currentTierConfig.targetScale);
-
-    const ring = this.add.circle(center.x, center.y, radius, hexToNumber(NEON_THEME.palette.cellHot), 0.52)
-      .setStrokeStyle(3, this.currentTierConfig.haloColor, 0.95)
-      .setBlendMode(Phaser.BlendModes.SCREEN);
-    const core = this.add.circle(center.x, center.y, radius * 0.62, 0xffffff, 0.08)
-      .setStrokeStyle(1, hexToNumber(NEON_THEME.palette.text), 0.16);
-    const node = this.add.text(center.x, center.y, animal, {
-      fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, Hiragino Sans, sans-serif",
-      fontSize: `${fontSize}px`,
-    }).setOrigin(0.5).setScale(0.1).setAlpha(0);
-    node.setShadow(0, 0, "#ffffff", 10, false, true);
+    const variantId = Phaser.Utils.Array.GetRandom(this.nodeVariantPool);
+    const targetSpec = buildNodeTargetSpec({ variantId, tier: this.tier });
+    const container = this.add.container(center.x, center.y).setDepth(26);
+    const glow = this.add.rectangle(0, 0, 10, 10, hexToNumber(targetSpec.palette.glowColor), targetSpec.geometry.glowDiamond.alpha)
+      .setAngle(45)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const outer = this.add.rectangle(0, 0, 10, 10, 0x000000, 0)
+      .setAngle(45)
+      .setStrokeStyle(targetSpec.geometry.outerDiamond.strokeThickness, hexToNumber(targetSpec.palette.outerColor), 0.95)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const core = this.add.rectangle(0, 0, 10, 10, hexToNumber(targetSpec.palette.coreColor), targetSpec.geometry.coreDiamond.alpha)
+      .setAngle(45)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const crosshairH = this.add.rectangle(0, 0, 10, 10, hexToNumber(targetSpec.palette.outerColor), targetSpec.geometry.crosshair.alpha)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const crosshairV = this.add.rectangle(0, 0, 10, 10, hexToNumber(targetSpec.palette.outerColor), targetSpec.geometry.crosshair.alpha)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    container.add([glow, outer, core, crosshairH, crosshairV]);
+    this.applyTargetVisualScale(
+      {
+        container,
+        glow,
+        outer,
+        core,
+        crosshairH,
+        crosshairV,
+        spec: targetSpec,
+      },
+      center,
+      this.currentTierConfig.targetScale,
+    );
+    container.setScale(0.1).setAlpha(0);
 
     const popTween = this.tweens.add({
-      targets: [ring, core, node],
+      targets: container,
       alpha: { from: 0, to: 1 },
       scale: { from: 0.1, to: 1.08 },
       duration: 150,
       ease: "Back.easeOut",
       onComplete: () => {
-        ring.setScale(1);
-        core.setScale(1);
-        node.setScale(1);
+        container.setScale(1);
       },
     });
-    const ringTween = this.tweens.add({
-      targets: ring,
-      scale: { from: 1, to: 1.12 },
-      alpha: { from: 0.68, to: 0.35 },
-      duration: 340,
+    const spinTween = this.tweens.add({
+      targets: [outer, glow],
+      angle: "+=360",
+      duration: targetSpec.motion.spinMs,
+      repeat: -1,
+      ease: "Linear",
+    });
+    const pulseTween = this.tweens.add({
+      targets: [core, glow],
+      scale: { from: 1, to: targetSpec.motion.pulseScaleMax },
+      duration: targetSpec.motion.pulseMs,
       yoyo: true,
       repeat: -1,
       ease: "Sine.easeInOut",
     });
-    const bobTween = this.tweens.add({
-      targets: node,
-      y: center.y - Math.max(4, center.size * 0.04),
+    const scanTween = this.tweens.add({
+      targets: [crosshairH, crosshairV],
+      alpha: { from: 0.35, to: 1 },
       duration: 480,
       yoyo: true,
       repeat: -1,
@@ -556,15 +585,36 @@ class GameScene extends Phaser.Scene {
 
     this.activeTargets.push({
       cellIndex,
-      animal,
-      ring,
+      variantId,
+      container,
+      glow,
+      outer,
       core,
-      node,
+      crosshairH,
+      crosshairV,
+      spec: targetSpec,
       popTween,
-      ringTween,
-      bobTween,
+      spinTween,
+      pulseTween,
+      scanTween,
       scaleFactor: this.currentTierConfig.targetScale,
     });
+  }
+
+  applyTargetVisualScale(target, center, scaleFactor) {
+    const size = center.size * scaleFactor;
+    const glowSize = size * target.spec.geometry.glowDiamond.sizeRatio;
+    const outerSize = size * target.spec.geometry.outerDiamond.sizeRatio;
+    const coreSize = size * target.spec.geometry.coreDiamond.sizeRatio;
+    const crossLength = size * target.spec.geometry.crosshair.lengthRatio;
+    const crossThickness = Math.max(3, size * target.spec.geometry.crosshair.thicknessRatio);
+
+    target.container.setPosition(center.x, center.y);
+    target.glow.setSize(glowSize, glowSize);
+    target.outer.setSize(outerSize, outerSize);
+    target.core.setSize(coreSize, coreSize);
+    target.crosshairH.setSize(crossLength, crossThickness);
+    target.crosshairV.setSize(crossThickness, crossLength);
   }
 
   handleHit(cellIndex) {
@@ -592,14 +642,14 @@ class GameScene extends Phaser.Scene {
     }
 
     if (remainingTargets > 0) {
-      this.setStatusText(leveledUp ? "LEVEL UP!" : `TARGET ${remainingTargets}`, leveledUp ? "#fde047" : "#a5f3fc");
+      this.setStatusText(leveledUp ? "SECURITY OVERDRIVE!" : `NODE X${remainingTargets}`, leveledUp ? "#fde047" : "#a5f3fc");
       return;
     }
 
     this.roundResolved = true;
     this.clearRoundTimers();
     this.setStatusText(
-      leveledUp ? "LEVEL UP!" : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.hit),
+      leveledUp ? "SECURITY OVERDRIVE!" : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.hit),
       leveledUp ? "#fde047" : NEON_THEME.palette.success,
     );
     this.nextSpawnTimer = this.time.delayedCall(this.currentTierConfig.spawnDelayMs, () => this.spawnTargets());
@@ -674,7 +724,7 @@ class GameScene extends Phaser.Scene {
   }
 
   updateScoreText(animate = false) {
-    this.scoreText.setText(`SCORE ${this.score}`);
+    this.scoreText.setText(formatBreachLevel(this.score));
     if (!animate) {
       return;
     }
@@ -689,7 +739,7 @@ class GameScene extends Phaser.Scene {
   }
 
   updateTierUi() {
-    this.levelBadgeText.setText(`LEVEL ${this.tier}`);
+    this.levelBadgeText.setText(`SECTOR ${this.tier}`);
     this.levelBadgeBackground.fillColor = this.currentTierConfig.badgeColor;
     this.levelBadgeBackground.setStrokeStyle(2, this.currentTierConfig.badgeColor, 0.95);
   }
@@ -711,7 +761,7 @@ class GameScene extends Phaser.Scene {
     const secondsLeft = Math.ceil(Math.max(0, this.remainingTimeMs) / 1000);
     const timeStyle = getTimeStyle(secondsLeft);
     this.timeText
-      .setText(`TIME ${secondsLeft}`)
+      .setText(formatUptime(this.remainingTimeMs))
       .setColor(timeStyle.color)
       .setShadow(0, 0, timeStyle.color, 10, false, true);
 
@@ -747,7 +797,7 @@ class GameScene extends Phaser.Scene {
     this.clearActiveTargets(true);
     this.clearTimers();
     this.setStatusText(GAME_CONFIG.statusMessages.finish, NEON_THEME.palette.warning);
-    this.updateButtonVisual(this.startButton, "リトライ");
+    this.updateButtonVisual(this.startButton, "[ REBOOT ]");
     this.updateOverlayState("finished");
   }
 
@@ -758,7 +808,7 @@ class GameScene extends Phaser.Scene {
     }
 
     this.flashScreen("#facc15", 0.16, 160);
-    this.levelBannerText.setText(`LEVEL ${this.tier}`);
+    this.levelBannerText.setText("SECURITY OVERDRIVE!");
     this.levelBanner.setVisible(true).setAlpha(0).setScale(0.7);
     this.levelBannerTween = this.tweens.add({
       targets: this.levelBanner,
@@ -784,7 +834,7 @@ class GameScene extends Phaser.Scene {
   }
 
   getSoundLabel() {
-    return this.audioEnabled ? "サウンド ON" : "サウンド OFF";
+    return this.audioEnabled ? "[ AUDIO ON ]" : "[ AUDIO OFF ]";
   }
 
   playCue(name) {
@@ -884,11 +934,14 @@ class GameScene extends Phaser.Scene {
     if (target.popTween) {
       target.popTween.stop();
     }
-    if (target.ringTween) {
-      target.ringTween.stop();
+    if (target.spinTween) {
+      target.spinTween.stop();
     }
-    if (target.bobTween) {
-      target.bobTween.stop();
+    if (target.pulseTween) {
+      target.pulseTween.stop();
+    }
+    if (target.scanTween) {
+      target.scanTween.stop();
     }
   }
 
@@ -901,22 +954,18 @@ class GameScene extends Phaser.Scene {
     this.stopTargetTweens(targetToRemove);
 
     if (!animate) {
-      targetToRemove.ring.destroy();
-      targetToRemove.core.destroy();
-      targetToRemove.node.destroy();
+      targetToRemove.container.destroy();
       return;
     }
 
     this.tweens.add({
-      targets: [targetToRemove.ring, targetToRemove.core, targetToRemove.node],
+      targets: targetToRemove.container,
       alpha: 0,
       scale: isHit ? 1.24 : 0.8,
       duration: isHit ? 180 : 140,
       ease: "Quad.easeOut",
       onComplete: () => {
-        targetToRemove.ring.destroy();
-        targetToRemove.core.destroy();
-        targetToRemove.node.destroy();
+        targetToRemove.container.destroy();
       },
     });
   }
@@ -996,10 +1045,19 @@ class GameScene extends Phaser.Scene {
     const timeFontSize = Phaser.Math.Clamp(Math.round(w * 0.05), 24, 32);
     const statusFontSize = Phaser.Math.Clamp(Math.round(w * 0.042), 20, 28);
     const badgeScale = Phaser.Math.Clamp(columnWidth / 520, 0.9, 1.08);
+    const overlayHeadlineSize = Phaser.Math.Clamp(Math.round(w * 0.075), 28, 34);
+    const overlaySublineSize = Phaser.Math.Clamp(Math.round(w * 0.042), 16, 20);
+    const overlayCardWidth = Math.min(columnWidth * 0.96, 420);
+    const levelBannerWidth = Math.min(columnWidth * 0.92, 440);
     this.scoreText.setFontSize(scoreFontSize);
     this.timeText.setFontSize(timeFontSize);
     this.statusText.setFontSize(statusFontSize);
     this.levelBadgeText.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.038), 18, 24));
+    this.overlayHeadline.setFontSize(overlayHeadlineSize);
+    this.overlaySubline.setFontSize(overlaySublineSize);
+    this.overlayCardBackground.setSize(overlayCardWidth, 152);
+    this.levelBannerBackground.setSize(levelBannerWidth, 102);
+    this.levelBannerText.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.045), 24, 30));
     this.levelBadge.setScale(badgeScale);
 
     this.scoreText.setPosition(hudX, hudTop + 16);
@@ -1009,25 +1067,20 @@ class GameScene extends Phaser.Scene {
     this.levelBanner.setPosition(hudX, boardTop + boardSize * 0.44);
     this.overlayContainer.setPosition(hudX, boardTop + boardSize * 0.5);
 
-    const buttonsY = h - bottomArea * 0.46;
-    const sidePadding = Math.max((w - columnWidth) * 0.5, 16);
-    const buttonGap = Phaser.Math.Clamp(columnWidth * 0.04, 12, 22);
-    const desiredButtonWidth = Math.min(280, (columnWidth - buttonGap) * 0.5);
-    const desiredButtonHeight = Phaser.Math.Clamp(h * 0.085, 74, 88);
-    const buttonScale = Phaser.Math.Clamp(
-      Math.min(
-        desiredButtonWidth / this.startButton.baseWidth,
-        desiredButtonHeight / this.startButton.baseHeight,
-      ),
-      0.76,
-      1,
-    );
-    const buttonWidth = this.startButton.baseWidth * buttonScale;
+    const buttonLayout = computeBottomControlLayout({
+      width: w,
+      height: h,
+      columnWidth,
+      boardTop,
+      boardSize,
+      buttonBaseWidth: this.startButton.baseWidth,
+      buttonBaseHeight: this.startButton.baseHeight,
+    });
 
-    this.setButtonBaseScale(this.startButton, buttonScale);
-    this.setButtonBaseScale(this.soundButton, buttonScale);
-    this.setButtonPosition(this.startButton, sidePadding + buttonWidth * 0.5, buttonsY);
-    this.setButtonPosition(this.soundButton, w - sidePadding - buttonWidth * 0.5, buttonsY);
+    this.setButtonBaseScale(this.startButton, buttonLayout.buttonScale);
+    this.setButtonBaseScale(this.soundButton, buttonLayout.buttonScale);
+    this.setButtonPosition(this.startButton, buttonLayout.leftX, buttonLayout.buttonsY);
+    this.setButtonPosition(this.soundButton, buttonLayout.rightX, buttonLayout.buttonsY);
 
     const boardMetrics = this.drawBoard(boardLeft, boardTop, boardSize);
     for (let row = 0; row < GAME_CONFIG.gridSize; row += 1) {
@@ -1118,11 +1171,7 @@ class GameScene extends Phaser.Scene {
   syncActiveTargetsToLayout() {
     this.activeTargets.forEach((target) => {
       const center = this.cellCenters[target.cellIndex];
-      const radius = Math.max(24, center.size * 0.29 * target.scaleFactor);
-      const fontSize = Math.round(center.size * 0.48 * target.scaleFactor);
-      target.ring.setPosition(center.x, center.y).setRadius(radius);
-      target.core.setPosition(center.x, center.y).setRadius(radius * 0.62);
-      target.node.setPosition(center.x, center.y).setFontSize(`${fontSize}px`);
+      this.applyTargetVisualScale(target, center, target.scaleFactor);
     });
   }
 
@@ -1144,7 +1193,9 @@ class GameScene extends Phaser.Scene {
     }
     const copy = getOverlayCopy(mode);
     this.overlayHeadline.setText(copy.headline);
-    this.overlaySubline.setText(copy.subline);
+    this.overlaySubline.setText(
+      mode === "finished" ? `${copy.subline}: ${String(this.score).padStart(2, "0")}` : copy.subline,
+    );
     this.overlayContainer.setVisible(true).setAlpha(1).setScale(mode === "finished" ? 1.04 : 1);
   }
 
@@ -1164,7 +1215,7 @@ class GameScene extends Phaser.Scene {
       soundEnabled: this.audioEnabled,
       activeTargets: this.activeTargets.map((target) => ({
         cellIndex: target.cellIndex,
-        animal: target.animal,
+        variantId: target.variantId,
       })),
       buttons: {
         start: this.startButton?.labelNode?.text ?? "",

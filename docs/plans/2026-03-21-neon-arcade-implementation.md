@@ -4,7 +4,7 @@
 
 **Goal:** `reflexesGame` の画面全体をネオンアーケード調へ再設計し、ヒット時の快感とゲームらしい高揚感を強める。
 
-**Architecture:** 既存のゲームロジックは維持しつつ、テーマトークンとボタン仕様を `src/themeStyle.js` / `src/buttonStyle.js` に分離する。`src/main.js` はそれらの仕様を参照しながら、背景、HUD、盤面、ターゲット、状態演出を再構築する。
+**Architecture:** 既存のゲームロジックは維持しつつ、テーマトークンとボタン仕様を `src/themeStyle.js` / `src/buttonStyle.js` に分離する。ターゲットは `src/targetStyle.js` に切り出し、`src/main.js` はそれらの仕様を参照しながら、背景、HUD、盤面、サイバーノード、状態演出を再構築する。
 
 **Tech Stack:** JavaScript ES Modules, Phaser 3, Node built-in test runner, Docker, Playwright CLI
 
@@ -14,16 +14,19 @@
 
 **Files:**
 - Create: `src/themeStyle.js`
+- Create: `src/targetStyle.js`
 - Create: `tests/theme-style.test.mjs`
+- Create: `tests/target-style.test.mjs`
 - Modify: `tests/button-style.test.mjs`
 
 - [ ] **Step 1: ネオンテーマの failing test を書く**
 
-`tests/theme-style.test.mjs` で以下を検証する。
+`tests/theme-style.test.mjs` と `tests/target-style.test.mjs` で以下を検証する。
 
 - ベース背景色が `#0f172a`
 - urgent 状態で時間色が警告色へ変わる
 - `start`, `playing`, `finished` のオーバーレイコピーが期待どおり返る
+- サイバーノードの形状・色・モーション仕様が期待どおり返る
 
 - [ ] **Step 2: ボタン仕様テストをネオン向けに更新する**
 
@@ -35,17 +38,17 @@
 
 - [ ] **Step 3: テストが正しく失敗することを確認する**
 
-Run: `docker run --rm -v "$PWD":/app -w /app node:20 node --test tests/theme-style.test.mjs tests/button-style.test.mjs`
+Run: `docker run --rm -v "$PWD":/app -w /app node:20 node --test tests/theme-style.test.mjs tests/button-style.test.mjs tests/target-style.test.mjs`
 
 Expected: FAIL with missing `src/themeStyle.js` and/or mismatched button spec assertions
 
 - [ ] **Step 4: 最小実装を追加する**
 
-`src/themeStyle.js` にテーマトークンと状態ヘルパーを実装し、`src/buttonStyle.js` をネオンボタン仕様へ更新する。
+`src/themeStyle.js` にテーマトークンと状態ヘルパーを実装し、`src/buttonStyle.js` をネオンボタン仕様へ更新し、`src/targetStyle.js` にサイバーノード仕様を実装する。
 
 - [ ] **Step 5: テストが通ることを確認する**
 
-Run: `docker run --rm -v "$PWD":/app -w /app node:20 node --test tests/theme-style.test.mjs tests/button-style.test.mjs`
+Run: `docker run --rm -v "$PWD":/app -w /app node:20 node --test tests/theme-style.test.mjs tests/button-style.test.mjs tests/target-style.test.mjs`
 
 Expected: PASS
 
@@ -63,6 +66,7 @@ Expected: PASS
 - ボタン文言
 - ゲームモード
 - urgent 判定が視覚変更へ接続される前提
+- active target が `variantId` で追えること
 
 - [ ] **Step 2: 背景、HUD、盤面、ボタンをテーマ参照へ差し替える**
 
@@ -70,18 +74,19 @@ Expected: PASS
 - デジタル HUD
 - ネオン枠の 3x3 盤面
 - カプセル型ボタン
+- サイバーノードターゲット
 
 - [ ] **Step 3: ヒット/ミス/レベルアップ/残り5秒/終了の演出を追加する**
 
-- ヒット: 波紋 + 放射線 + スコアバンプ
+- ヒット: 白フラッシュ + 破片バースト + スコアバンプ
 - ミス: 短いカメラシェイク + 警告フィードバック
-- レベルアップ: フラッシュ + 大見出し
+- レベルアップ: フラッシュ + `SECURITY OVERDRIVE!`
 - 残り5秒: 時間表示の警告パルス
-- 終了: `TIME UP` とリトライ導線
+- 終了: `CONNECTION TERMINATED.` と `BREACH LEVEL` 表示
 
 - [ ] **Step 4: 既存ゲーム進行を壊していないか最小検証する**
 
-Run: `docker run --rm -v "$PWD":/app -w /app node:20 node --test tests/theme-style.test.mjs tests/button-style.test.mjs`
+Run: `docker run --rm -v "$PWD":/app -w /app node:20 node --test tests/theme-style.test.mjs tests/button-style.test.mjs tests/target-style.test.mjs`
 
 Expected: PASS
 
@@ -103,6 +108,7 @@ Expected: container id is returned
 - プレイ中
 - ボタン状態
 - コンソールエラー有無
+- ターゲットが動物絵文字へ戻っていないこと
 
 - [ ] **Step 3: スクリーンショットを確認し、結果を記録する**
 
