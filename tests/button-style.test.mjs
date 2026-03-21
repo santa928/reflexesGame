@@ -1,33 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCloudButtonSpec } from "../src/buttonStyle.js";
+import { buildArcadeButtonSpec } from "../src/buttonStyle.js";
 
-test("start button uses cloud puffs and animal accent", () => {
-  const spec = buildCloudButtonSpec({ kind: "start", soundEnabled: false });
+test("start button uses arcade capsule geometry and cyan accent", () => {
+  const spec = buildArcadeButtonSpec({ kind: "start", soundEnabled: false });
 
-  assert.equal(spec.label.icon, "🐾");
-  assert.equal(spec.shape.topPuffs.length, 3);
-  assert.equal(spec.shape.bottomPuffs.length, 3);
-  assert.equal(spec.layers.shadow.offsetY, 8);
-  assert.equal(spec.interaction.pressOffsetY, 6);
+  assert.equal(spec.label.text, "スタート");
+  assert.equal(spec.shape.body.radius, 30);
+  assert.equal(spec.shape.innerBody.height, 54);
+  assert.equal(spec.shape.accentBar.width, 56);
+  assert.equal(spec.colors.accentColor, "#67E8F9");
 });
 
-test("sound button switches icon and label with audio state", () => {
-  const offSpec = buildCloudButtonSpec({ kind: "sound", soundEnabled: false });
-  const onSpec = buildCloudButtonSpec({ kind: "sound", soundEnabled: true });
+test("sound button switches accent and label with audio state", () => {
+  const offSpec = buildArcadeButtonSpec({ kind: "sound", soundEnabled: false });
+  const onSpec = buildArcadeButtonSpec({ kind: "sound", soundEnabled: true });
 
-  assert.equal(offSpec.label.icon, "🔇");
-  assert.equal(offSpec.label.text, "おと OFF");
-  assert.equal(onSpec.label.icon, "🎵");
-  assert.equal(onSpec.label.text, "おと ON");
-  assert.notEqual(offSpec.colors.frontFill, onSpec.colors.frontFill);
+  assert.equal(offSpec.label.text, "サウンド OFF");
+  assert.equal(onSpec.label.text, "サウンド ON");
+  assert.equal(offSpec.colors.accentColor, "#FB7185");
+  assert.equal(onSpec.colors.accentColor, "#34D399");
+  assert.notEqual(offSpec.colors.coreFill, onSpec.colors.coreFill);
 });
 
-test("hover and focus styles stay soft and readable", () => {
-  const spec = buildCloudButtonSpec({ kind: "start", soundEnabled: false });
+test("hover and press motion stays fast and arcade-like", () => {
+  const spec = buildArcadeButtonSpec({ kind: "start", soundEnabled: false });
 
-  assert.equal(spec.interaction.hoverScale, 1.03);
-  assert.equal(spec.interaction.focusOutlineColor, 0xffd76a);
-  assert.equal(spec.label.textColor, "#5C4033");
+  assert.equal(spec.interaction.hoverScale, 1.04);
+  assert.equal(spec.interaction.pressScale, 0.96);
+  assert.equal(spec.interaction.pressOffsetY, 4);
+  assert.equal(spec.label.fontFamily, "'Courier New', 'Arial Black', sans-serif");
 });

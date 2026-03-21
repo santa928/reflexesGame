@@ -1,4 +1,5 @@
-import { buildCloudButtonSpec, hexToNumber } from "./buttonStyle.js";
+import { buildArcadeButtonSpec, hexToNumber } from "./buttonStyle.js";
+import { NEON_THEME, getOverlayCopy, getTimeStyle } from "./themeStyle.js";
 
 const GAME_CONFIG = Object.freeze({
   gridSize: 3,
@@ -8,10 +9,10 @@ const GAME_CONFIG = Object.freeze({
   roundMsStep: 40,
   animalChoices: ["🐶", "🐱", "🐰", "🐤", "🐸"],
   statusMessages: {
-    ready: "どうぶつを タップ！",
-    hit: ["いいね！", "すごい！", "ナイス！"],
-    miss: ["あとすこし！", "つぎ いくよ！"],
-    finish: "おしまい！ もういちど",
+    ready: "TARGET LOCK",
+    hit: ["LOCK!", "NICE!", "COMBO!"],
+    miss: ["MISS", "HURRY UP"],
+    finish: "TIME UP",
   },
   tierConfigs: [
     {
@@ -23,8 +24,8 @@ const GAME_CONFIG = Object.freeze({
       targetScale: 1,
       minRoundMs: 900,
       assistMsOnMiss: 80,
-      badgeColor: 0xffb86c,
-      haloColor: 0xffddb8,
+      badgeColor: 0x67e8f9,
+      haloColor: 0x22d3ee,
     },
     {
       tier: 2,
@@ -35,8 +36,8 @@ const GAME_CONFIG = Object.freeze({
       targetScale: 0.97,
       minRoundMs: 820,
       assistMsOnMiss: 70,
-      badgeColor: 0xf8d45c,
-      haloColor: 0xffefb3,
+      badgeColor: 0x34d399,
+      haloColor: 0x6ee7b7,
     },
     {
       tier: 3,
@@ -47,8 +48,8 @@ const GAME_CONFIG = Object.freeze({
       targetScale: 0.93,
       minRoundMs: 760,
       assistMsOnMiss: 60,
-      badgeColor: 0x79d9b0,
-      haloColor: 0xcff7e3,
+      badgeColor: 0xfacc15,
+      haloColor: 0xfde047,
     },
     {
       tier: 4,
@@ -59,8 +60,8 @@ const GAME_CONFIG = Object.freeze({
       targetScale: 0.86,
       minRoundMs: 680,
       assistMsOnMiss: 50,
-      badgeColor: 0x63b1ff,
-      haloColor: 0xc9e4ff,
+      badgeColor: 0xfb7185,
+      haloColor: 0xfda4af,
     },
   ],
 });
@@ -68,16 +69,12 @@ const GAME_CONFIG = Object.freeze({
 const AUDIO_CONFIG = Object.freeze({
   enabledByDefault: false,
   cues: {
-    toggle: [
-      { frequencyHz: 660, durationMs: 70, volume: 0.028, wave: "triangle" },
-    ],
+    toggle: [{ frequencyHz: 660, durationMs: 70, volume: 0.028, wave: "triangle" }],
     hit: [
       { frequencyHz: 820, durationMs: 80, volume: 0.04, wave: "triangle" },
       { frequencyHz: 980, durationMs: 70, volume: 0.028, wave: "triangle", startOffsetMs: 40 },
     ],
-    miss: [
-      { frequencyHz: 250, durationMs: 110, volume: 0.028, wave: "sine" },
-    ],
+    miss: [{ frequencyHz: 250, durationMs: 110, volume: 0.028, wave: "sine" }],
     levelUp: [
       { frequencyHz: 520, durationMs: 90, volume: 0.03, wave: "triangle" },
       { frequencyHz: 760, durationMs: 90, volume: 0.036, wave: "triangle", startOffsetMs: 60 },
@@ -89,6 +86,12 @@ const AUDIO_CONFIG = Object.freeze({
     ],
   },
 });
+
+function setGlow(target, color, blur = 10, distance = 0, alpha = 0.85) {
+  target.setShadow(distance, 0, color, blur, false, true);
+  target.setAlpha(alpha);
+  return target;
+}
 
 class BootScene extends Phaser.Scene {
   constructor() {
@@ -121,9 +124,11 @@ class GameScene extends Phaser.Scene {
     this.activeTargets = [];
     this.lastSpawnCellIndices = [];
     this.animalPool = [...GAME_CONFIG.animalChoices];
+    this.lastUrgentSecond = null;
+    this.overlayMode = "idle";
     this.decorations = {
-      clouds: [],
-      bubbles: [],
+      ambientOrbs: [],
+      stars: [],
     };
   }
 
@@ -133,6 +138,7 @@ class GameScene extends Phaser.Scene {
     this.createUi();
     this.createGrid();
     this.layout(this.scale.width, this.scale.height);
+    this.updateOverlayState("idle");
     this.scale.on("resize", this.onResize, this);
   }
 
@@ -149,130 +155,137 @@ class GameScene extends Phaser.Scene {
     this.activeTargets = [];
     this.lastSpawnCellIndices = [];
     this.animalPool = [...GAME_CONFIG.animalChoices];
+    this.lastUrgentSecond = null;
+    this.overlayMode = "idle";
   }
 
   createBackdrop() {
     this.backgroundGraphics = this.add.graphics();
+    this.hudGraphics = this.add.graphics();
     this.boardGraphics = this.add.graphics();
+    this.flashOverlay = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0).setOrigin(0).setDepth(60);
+    this.dangerOverlay = this.add.rectangle(0, 0, 10, 10, hexToNumber(NEON_THEME.palette.warning), 0)
+      .setOrigin(0)
+      .setDepth(12);
 
-    for (let i = 0; i < 3; i += 1) {
-      const cloud = this.createCloud();
-      this.decorations.clouds.push(cloud);
+    for (let i = 0; i < 4; i += 1) {
+      const color = i % 2 === 0 ? 0x22d3ee : 0xfb7185;
+      const orb = this.add.circle(0, 0, 40, color, 0.12).setBlendMode(Phaser.BlendModes.SCREEN);
+      this.decorations.ambientOrbs.push(orb);
       this.tweens.add({
-        targets: cloud,
-        x: "+=10",
-        duration: 2600 + i * 300,
+        targets: orb,
+        y: "-=24",
+        x: i % 2 === 0 ? "+=12" : "-=12",
+        duration: 2400 + i * 180,
         yoyo: true,
         repeat: -1,
         ease: "Sine.easeInOut",
       });
     }
 
-    for (let i = 0; i < 5; i += 1) {
-      const bubble = this.add.circle(0, 0, 20, 0xffffff, 0.18);
-      this.decorations.bubbles.push(bubble);
+    for (let i = 0; i < 18; i += 1) {
+      const star = this.add.circle(0, 0, 2 + (i % 3), 0xe2f3ff, 0.68).setDepth(1);
+      this.decorations.stars.push(star);
       this.tweens.add({
-        targets: bubble,
-        y: "-=12",
-        duration: 1800 + i * 220,
+        targets: star,
+        alpha: { from: 0.2, to: 0.9 },
+        duration: 900 + i * 70,
         yoyo: true,
         repeat: -1,
         ease: "Sine.easeInOut",
       });
     }
-  }
-
-  createCloud() {
-    const parts = [
-      this.add.ellipse(-38, 6, 44, 28, 0xffffff, 0.88),
-      this.add.ellipse(-10, -6, 48, 34, 0xffffff, 0.92),
-      this.add.ellipse(20, 4, 56, 32, 0xffffff, 0.9),
-      this.add.ellipse(48, 10, 36, 24, 0xffffff, 0.84),
-    ];
-    return this.add.container(0, 0, parts).setAlpha(0.8);
   }
 
   createUi() {
-    this.scoreText = this.add
-      .text(0, 0, "スコア: 0", {
-        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
-        fontSize: "56px",
-        color: "#173255",
-        fontStyle: "700",
-      })
-      .setOrigin(0.5, 0);
+    this.scoreText = setGlow(this.add.text(0, 0, "SCORE 0", {
+      fontFamily: "'Courier New', monospace",
+      fontSize: "54px",
+      color: NEON_THEME.palette.text,
+      fontStyle: "700",
+    }).setOrigin(0.5, 0), "#22d3ee");
 
-    this.timeText = this.add
-      .text(0, 0, "のこり: 30", {
-        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
-        fontSize: "30px",
-        color: "#1b8a5a",
-        fontStyle: "700",
-      })
-      .setOrigin(0.5, 0);
+    this.timeText = setGlow(this.add.text(0, 0, "TIME 30", {
+      fontFamily: "'Courier New', monospace",
+      fontSize: "32px",
+      color: NEON_THEME.palette.hud,
+      fontStyle: "700",
+    }).setOrigin(0.5, 0), "#22d3ee", 8);
 
-    this.levelBadgeBackground = this.add.rectangle(0, 0, 182, 54, this.currentTierConfig.badgeColor, 1);
-    this.levelBadgeBackground.setStrokeStyle(3, 0xffffff, 0.95);
-    this.levelBadgeText = this.add
-      .text(0, 0, "レベル 1", {
-        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
-        fontSize: "28px",
-        color: "#173255",
-        fontStyle: "700",
-      })
-      .setOrigin(0.5);
-    this.levelBadge = this.add.container(0, 0, [this.levelBadgeBackground, this.levelBadgeText]);
-
-    this.statusText = this.add
-      .text(0, 0, "スタートを おしてね", {
-        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
-        fontSize: "34px",
-        color: "#46607f",
-        fontStyle: "700",
-      })
-      .setOrigin(0.5, 0);
-
-    this.levelBannerBackground = this.add
-      .rectangle(0, 0, 320, 110, 0xfff6b4, 0.97)
-      .setStrokeStyle(4, 0xffffff, 1);
-    this.levelBannerText = this.add
-      .text(0, 0, "レベルアップ！", {
-        fontFamily: "Hiragino Sans, Noto Sans JP, sans-serif",
-        fontSize: "38px",
-        color: "#173255",
-        fontStyle: "700",
-      })
-      .setOrigin(0.5);
-    this.levelBannerSparkLeft = this.add.text(-122, 0, "✨", {
-      fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif",
-      fontSize: "36px",
+    this.levelBadgeBackground = this.add.rectangle(0, 0, 180, 48, this.currentTierConfig.badgeColor, 0.18)
+      .setStrokeStyle(2, this.currentTierConfig.badgeColor, 0.9);
+    this.levelBadgeText = this.add.text(0, 0, "LEVEL 1", {
+      fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
+      fontSize: "24px",
+      color: "#f8fafc",
+      fontStyle: "700",
     }).setOrigin(0.5);
-    this.levelBannerSparkRight = this.add.text(122, 0, "✨", {
-      fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif",
-      fontSize: "36px",
+    this.levelBadge = this.add.container(0, 0, [this.levelBadgeBackground, this.levelBadgeText]).setDepth(18);
+
+    this.statusText = this.add.text(0, 0, "TARGET LOCK", {
+      fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
+      fontSize: "28px",
+      color: "#b8e9ff",
+      fontStyle: "700",
+    }).setOrigin(0.5, 0).setDepth(18);
+    this.statusText.setShadow(0, 0, "#22d3ee", 8, false, true);
+
+    this.levelBannerBackground = this.add.rectangle(0, 0, 360, 102, 0x081121, 0.92)
+      .setStrokeStyle(3, hexToNumber(NEON_THEME.palette.level), 0.95);
+    this.levelBannerText = this.add.text(0, 0, "LEVEL UP", {
+      fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
+      fontSize: "38px",
+      color: "#fef08a",
+      fontStyle: "700",
     }).setOrigin(0.5);
-    this.levelBanner = this.add.container(0, 0, [
-      this.levelBannerBackground,
-      this.levelBannerText,
-      this.levelBannerSparkLeft,
-      this.levelBannerSparkRight,
-    ]);
-    this.levelBanner.setVisible(false).setAlpha(0).setScale(0.72).setDepth(30);
+    this.levelBannerText.setShadow(0, 0, "#facc15", 14, false, true);
+    this.levelBanner = this.add.container(0, 0, [this.levelBannerBackground, this.levelBannerText])
+      .setVisible(false)
+      .setAlpha(0)
+      .setScale(0.7)
+      .setDepth(50);
     this.levelBannerTween = null;
 
+    this.overlayCardBackground = this.add.rectangle(0, 0, 320, 170, 0x081121, 0.76)
+      .setStrokeStyle(3, hexToNumber(NEON_THEME.palette.gridGlow), 0.9);
+    this.overlayHeadline = this.add.text(0, -28, "READY?", {
+      fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
+      fontSize: "42px",
+      color: "#f8fafc",
+      fontStyle: "700",
+    }).setOrigin(0.5);
+    this.overlayHeadline.setShadow(0, 0, "#22d3ee", 16, false, true);
+    this.overlaySubline = this.add.text(0, 34, "タップでスタート", {
+      fontFamily: "'Arial Black', 'Hiragino Sans', sans-serif",
+      fontSize: "20px",
+      color: "#bae6fd",
+      fontStyle: "700",
+      align: "center",
+    }).setOrigin(0.5);
+    this.overlayContainer = this.add.container(0, 0, [
+      this.overlayCardBackground,
+      this.overlayHeadline,
+      this.overlaySubline,
+    ]).setDepth(45);
+    this.overlayPulseTween = this.tweens.add({
+      targets: this.overlayContainer,
+      scaleX: 1.03,
+      scaleY: 1.03,
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+
     this.startButton = this.createButton({
+      kind: "start",
       label: "スタート",
-      width: 280,
-      height: 94,
-      backgroundColor: 0x2d9f68,
       onPress: () => this.startGame(),
     });
 
     this.soundButton = this.createButton({
+      kind: "sound",
       label: this.getSoundLabel(),
-      width: 280,
-      height: 94,
-      backgroundColor: 0x3f6fd9,
       onPress: () => this.toggleSound(),
     });
   }
@@ -287,56 +300,43 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  createButton({ label, width, height, backgroundColor, onPress }) {
-    const kind = backgroundColor === 0x3f6fd9 ? "sound" : "start";
-    const spec = buildCloudButtonSpec({
+  createButton({ kind, label, onPress }) {
+    const spec = buildArcadeButtonSpec({
       kind,
       labelText: label,
       soundEnabled: this.audioEnabled,
     });
-    const shadow = this.add.graphics();
-    const front = this.add.graphics();
-    const focusOutline = this.add.graphics().setAlpha(0);
-    const sheen = this.add.graphics().setAlpha(0.8);
-    const icon = this.add
-      .text(0, 0, spec.label.icon, {
-        fontFamily: spec.label.iconFontFamily,
-        fontSize: `${spec.label.iconFontSize}px`,
-      })
-      .setOrigin(0.5);
-    const text = this.add
-      .text(0, 0, spec.label.text, {
-        fontFamily: spec.label.fontFamily,
-        fontSize: `${spec.label.fontSize}px`,
-        color: spec.label.textColor,
-        stroke: spec.label.textStrokeColor,
-        strokeThickness: spec.label.textStrokeThickness,
-        fontStyle: "700",
-      })
-      .setOrigin(0.5);
-    const faceLayer = this.add.container(0, 0, [front, sheen, icon, text]);
-    const hitArea = this.add
-      .rectangle(0, 0, width, height, 0xffffff, 0.001)
+    const glow = this.add.graphics().setAlpha(0.4);
+    const shell = this.add.graphics();
+    const core = this.add.graphics();
+    const accent = this.add.graphics();
+    const labelNode = this.add.text(0, 0, spec.label.text, {
+      fontFamily: spec.label.fontFamily,
+      fontSize: `${spec.label.fontSize}px`,
+      color: spec.label.textColor,
+      fontStyle: "700",
+    }).setOrigin(0.5);
+    labelNode.setShadow(0, 0, spec.colors.glowColor, 10, false, true);
+    const frontLayer = this.add.container(0, 0, [core, accent, labelNode]);
+    const hitArea = this.add.rectangle(0, 0, spec.size.width, spec.size.height, 0xffffff, 0.001)
       .setInteractive({ useHandCursor: true });
-    const container = this.add.container(0, 0, [shadow, focusOutline, faceLayer, hitArea]);
-    container.setSize(width, height);
+    const container = this.add.container(0, 0, [glow, shell, frontLayer, hitArea]).setDepth(20);
+    container.setSize(spec.size.width, spec.size.height);
 
     const button = {
       kind,
       container,
-      shadow,
-      front,
-      sheen,
-      focusOutline,
-      faceLayer,
-      icon,
-      text,
+      glow,
+      shell,
+      core,
+      accent,
+      labelNode,
+      frontLayer,
       hitArea,
-      baseWidth: width,
-      baseHeight: height,
+      baseWidth: spec.size.width,
+      baseHeight: spec.size.height,
       baseScale: 1,
       pressTween: null,
-      hoverTween: null,
       homePosition: { x: 0, y: 0 },
       isHovered: false,
       spec,
@@ -360,68 +360,44 @@ class GameScene extends Phaser.Scene {
     return button;
   }
 
-  drawCloudLayer(graphics, spec, fillColor, strokeColor, offsetY = 0) {
-    const { baseRect, topPuffs, bottomPuffs } = spec.shape;
+  drawButtonShell(graphics, body, fillColor, lineColor, alpha = 1) {
     graphics.clear();
-    graphics.fillStyle(hexToNumber(fillColor), 1);
-    graphics.fillRoundedRect(baseRect.x, baseRect.y + offsetY, baseRect.width, baseRect.height, baseRect.radius);
-    [...topPuffs, ...bottomPuffs].forEach((puff) => {
-      graphics.fillCircle(puff.x, puff.y + offsetY, puff.radius);
-    });
-    graphics.lineStyle(3, hexToNumber(strokeColor), 0.9);
-    graphics.strokeRoundedRect(
-      baseRect.x,
-      baseRect.y + offsetY,
-      baseRect.width,
-      baseRect.height,
-      baseRect.radius,
-    );
+    graphics.fillStyle(hexToNumber(fillColor), alpha);
+    graphics.fillRoundedRect(body.x, body.y, body.width, body.height, body.radius);
+    graphics.lineStyle(2, hexToNumber(lineColor), 0.95);
+    graphics.strokeRoundedRect(body.x, body.y, body.width, body.height, body.radius);
   }
 
-  drawCloudSheen(graphics, spec) {
-    graphics.clear();
-    spec.shape.sheen.forEach((ellipse) => {
-      graphics.fillStyle(0xffffff, ellipse.alpha);
-      graphics.fillEllipse(ellipse.x, ellipse.y, ellipse.width, ellipse.height);
-    });
-  }
-
-  drawFocusOutline(graphics, spec) {
-    const { baseRect, topPuffs, bottomPuffs } = spec.shape;
-    const outlineColor = spec.interaction.focusOutlineColor;
-    graphics.clear();
-    graphics.lineStyle(5, outlineColor, 0.95);
-    graphics.strokeRoundedRect(
-      baseRect.x - 6,
-      baseRect.y - 6,
-      baseRect.width + 12,
-      baseRect.height + 12,
-      baseRect.radius + 8,
-    );
-    [...topPuffs, ...bottomPuffs].forEach((puff) => {
-      graphics.strokeCircle(puff.x, puff.y, puff.radius + 6);
-    });
-  }
-
-  updateButtonVisual(button, labelText = button.text.text) {
-    const spec = buildCloudButtonSpec({
+  updateButtonVisual(button, labelText = button.labelNode.text) {
+    const spec = buildArcadeButtonSpec({
       kind: button.kind,
       labelText,
       soundEnabled: this.audioEnabled,
     });
     button.spec = spec;
-    this.drawCloudLayer(button.shadow, spec, spec.colors.shadowFill, spec.colors.outlineColor, spec.layers.shadow.offsetY);
-    this.drawCloudLayer(button.front, spec, spec.colors.frontFill, spec.colors.outlineColor, spec.layers.front.offsetY);
-    this.drawCloudSheen(button.sheen, spec);
-    this.drawFocusOutline(button.focusOutline, spec);
-    button.icon.setText(spec.label.icon).setPosition(-54, -4).setFontSize(spec.label.iconFontSize);
-    button.text
+    const { body, innerBody, accentBar } = spec.shape;
+    this.drawButtonShell(button.shell, body, spec.colors.shellFill, spec.colors.outlineColor, 1);
+    this.drawButtonShell(button.core, innerBody, spec.colors.coreFill, spec.colors.glowColor, 1);
+
+    button.glow.clear();
+    button.glow.lineStyle(5, hexToNumber(spec.colors.glowColor), button.isHovered ? 0.9 : 0.45);
+    button.glow.strokeRoundedRect(body.x - 4, body.y - 4, body.width + 8, body.height + 8, body.radius + 6);
+
+    button.accent.clear();
+    button.accent.fillStyle(hexToNumber(spec.colors.accentColor), 1);
+    button.accent.fillRoundedRect(
+      accentBar.x,
+      accentBar.y,
+      accentBar.width,
+      accentBar.height,
+      accentBar.radius,
+    );
+    button.labelNode
       .setText(spec.label.text)
-      .setPosition(22, 0)
       .setFontFamily(spec.label.fontFamily)
       .setFontSize(spec.label.fontSize)
       .setColor(spec.label.textColor)
-      .setStroke(spec.label.textStrokeColor, spec.label.textStrokeThickness);
+      .setShadow(0, 0, spec.colors.glowColor, 10, false, true);
     this.refreshButtonRestingState(button);
   }
 
@@ -436,9 +412,9 @@ class GameScene extends Phaser.Scene {
     const hoverLiftY = button.isHovered ? button.spec.interaction.hoverLiftY : 0;
     button.container.setScale(button.baseScale * hoverScale);
     button.container.setPosition(button.homePosition.x, button.homePosition.y + hoverLiftY);
-    button.focusOutline.setAlpha(button.isHovered ? 0.95 : 0);
+    button.glow.setAlpha(button.isHovered ? button.spec.interaction.glowAlpha : 0.35);
     if (!button.pressTween) {
-      button.faceLayer.y = 0;
+      button.frontLayer.y = 0;
     }
   }
 
@@ -464,15 +440,15 @@ class GameScene extends Phaser.Scene {
       targets: button.container,
       scaleX: pressedScale,
       scaleY: pressedScale,
-      onStart: () => {
-        button.faceLayer.y = button.spec.interaction.pressOffsetY;
-      },
+      duration: 80,
+      ease: "Quad.easeOut",
       yoyo: true,
-      duration: 90,
-      ease: "Back.easeOut",
+      onStart: () => {
+        button.frontLayer.y = button.spec.interaction.pressOffsetY;
+      },
       onComplete: () => {
         button.pressTween = null;
-        button.faceLayer.y = 0;
+        button.frontLayer.y = 0;
         this.refreshButtonRestingState(button);
       },
     });
@@ -490,11 +466,13 @@ class GameScene extends Phaser.Scene {
     this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
     this.countdownEndAt = this.time.now + GAME_CONFIG.gameDurationMs;
     this.lastSpawnCellIndices = [];
-    this.updateScoreText();
+    this.lastUrgentSecond = null;
+    this.updateScoreText(false);
     this.updateTimeText();
     this.updateTierUi();
-    this.setStatusText(GAME_CONFIG.statusMessages.ready);
-    this.updateButtonVisual(this.startButton, "もういちど");
+    this.setStatusText(GAME_CONFIG.statusMessages.ready, NEON_THEME.palette.hud);
+    this.updateOverlayState("playing");
+    this.updateButtonVisual(this.startButton, "リトライ");
 
     this.gameTimer = this.time.delayedCall(GAME_CONFIG.gameDurationMs, () => this.finishGame());
     this.countdownTickTimer = this.time.addEvent({
@@ -532,39 +510,45 @@ class GameScene extends Phaser.Scene {
   createAnimalTarget(cellIndex) {
     const center = this.cellCenters[cellIndex];
     const animal = Phaser.Utils.Array.GetRandom(this.animalPool);
-    const haloRadius = Math.max(24, center.size * 0.28 * this.currentTierConfig.targetScale);
-    const fontSize = Math.round(center.size * 0.46 * this.currentTierConfig.targetScale);
+    const radius = Math.max(24, center.size * 0.29 * this.currentTierConfig.targetScale);
+    const fontSize = Math.round(center.size * 0.48 * this.currentTierConfig.targetScale);
 
-    const halo = this.add.circle(center.x, center.y, haloRadius, this.currentTierConfig.haloColor, 0.78);
-    const node = this.add
-      .text(center.x, center.y, animal, {
-        fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, Hiragino Sans, sans-serif",
-        fontSize: `${fontSize}px`,
-      })
-      .setOrigin(0.5)
-      .setScale(0.56)
-      .setAlpha(0);
+    const ring = this.add.circle(center.x, center.y, radius, hexToNumber(NEON_THEME.palette.cellHot), 0.52)
+      .setStrokeStyle(3, this.currentTierConfig.haloColor, 0.95)
+      .setBlendMode(Phaser.BlendModes.SCREEN);
+    const core = this.add.circle(center.x, center.y, radius * 0.62, 0xffffff, 0.08)
+      .setStrokeStyle(1, hexToNumber(NEON_THEME.palette.text), 0.16);
+    const node = this.add.text(center.x, center.y, animal, {
+      fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, Hiragino Sans, sans-serif",
+      fontSize: `${fontSize}px`,
+    }).setOrigin(0.5).setScale(0.1).setAlpha(0);
+    node.setShadow(0, 0, "#ffffff", 10, false, true);
 
     const popTween = this.tweens.add({
-      targets: [halo, node],
+      targets: [ring, core, node],
       alpha: { from: 0, to: 1 },
-      scale: { from: 0.56, to: 1 },
-      duration: 180,
+      scale: { from: 0.1, to: 1.08 },
+      duration: 150,
       ease: "Back.easeOut",
+      onComplete: () => {
+        ring.setScale(1);
+        core.setScale(1);
+        node.setScale(1);
+      },
     });
-    const haloTween = this.tweens.add({
-      targets: halo,
-      scale: { from: 1, to: 1.09 },
-      alpha: { from: 0.72, to: 0.48 },
-      duration: 420,
+    const ringTween = this.tweens.add({
+      targets: ring,
+      scale: { from: 1, to: 1.12 },
+      alpha: { from: 0.68, to: 0.35 },
+      duration: 340,
       yoyo: true,
       repeat: -1,
       ease: "Sine.easeInOut",
     });
     const bobTween = this.tweens.add({
       targets: node,
-      y: center.y - Math.max(4, center.size * 0.045),
-      duration: 580,
+      y: center.y - Math.max(4, center.size * 0.04),
+      duration: 480,
       yoyo: true,
       repeat: -1,
       ease: "Sine.easeInOut",
@@ -573,10 +557,11 @@ class GameScene extends Phaser.Scene {
     this.activeTargets.push({
       cellIndex,
       animal,
-      halo,
+      ring,
+      core,
       node,
       popTween,
-      haloTween,
+      ringTween,
       bobTween,
       scaleFactor: this.currentTierConfig.targetScale,
     });
@@ -595,7 +580,7 @@ class GameScene extends Phaser.Scene {
     this.score += 1;
 
     const leveledUp = this.updateTierFromScore();
-    this.updateScoreText();
+    this.updateScoreText(true);
     this.updateDifficulty(true);
     this.playCue(leveledUp ? "levelUp" : "hit");
     this.showSuccessBurst(this.cellCenters[cellIndex], this.currentTierConfig.badgeColor);
@@ -607,13 +592,16 @@ class GameScene extends Phaser.Scene {
     }
 
     if (remainingTargets > 0) {
-      this.setStatusText(leveledUp ? "レベルアップ！" : `もう ${remainingTargets} ぴき！`);
+      this.setStatusText(leveledUp ? "LEVEL UP!" : `TARGET ${remainingTargets}`, leveledUp ? "#fde047" : "#a5f3fc");
       return;
     }
 
     this.roundResolved = true;
     this.clearRoundTimers();
-    this.setStatusText(leveledUp ? "レベルアップ！" : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.hit));
+    this.setStatusText(
+      leveledUp ? "LEVEL UP!" : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.hit),
+      leveledUp ? "#fde047" : NEON_THEME.palette.success,
+    );
     this.nextSpawnTimer = this.time.delayedCall(this.currentTierConfig.spawnDelayMs, () => this.spawnTargets());
   }
 
@@ -625,9 +613,11 @@ class GameScene extends Phaser.Scene {
     this.roundResolved = true;
     this.updateDifficulty(false);
     this.playCue("miss");
-    this.setStatusText(Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.miss));
+    this.cameras.main.shake(90, 0.006);
+    this.flashScreen(NEON_THEME.palette.warning, 0.14, 120);
+    this.setStatusText(Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.miss), NEON_THEME.palette.warning);
     if (this.activeTargets[0]) {
-      this.showTapFeedback(this.cellCenters[this.activeTargets[0].cellIndex], 0xbccdf7);
+      this.showTapFeedback(this.cellCenters[this.activeTargets[0].cellIndex], hexToNumber(NEON_THEME.palette.warning));
     }
     this.clearActiveTargets(true);
     this.clearRoundTimers();
@@ -644,7 +634,9 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.showTapFeedback(this.cellCenters[cellIndex], 0x9ab7ff);
+    this.cameras.main.shake(60, 0.004);
+    this.showTapFeedback(this.cellCenters[cellIndex], hexToNumber(NEON_THEME.palette.warning));
+    this.setStatusText("MISS", NEON_THEME.palette.warning);
   }
 
   updateTierFromScore() {
@@ -681,13 +673,25 @@ class GameScene extends Phaser.Scene {
     );
   }
 
-  updateScoreText() {
-    this.scoreText.setText(`スコア: ${this.score}`);
+  updateScoreText(animate = false) {
+    this.scoreText.setText(`SCORE ${this.score}`);
+    if (!animate) {
+      return;
+    }
+    this.tweens.add({
+      targets: this.scoreText,
+      scaleX: 1.16,
+      scaleY: 1.16,
+      duration: 80,
+      yoyo: true,
+      ease: "Quad.easeOut",
+    });
   }
 
   updateTierUi() {
-    this.levelBadgeText.setText(`レベル ${this.tier}`);
+    this.levelBadgeText.setText(`LEVEL ${this.tier}`);
     this.levelBadgeBackground.fillColor = this.currentTierConfig.badgeColor;
+    this.levelBadgeBackground.setStrokeStyle(2, this.currentTierConfig.badgeColor, 0.95);
   }
 
   updateRemainingTime() {
@@ -705,11 +709,29 @@ class GameScene extends Phaser.Scene {
 
   updateTimeText() {
     const secondsLeft = Math.ceil(Math.max(0, this.remainingTimeMs) / 1000);
-    this.timeText.setText(`のこり: ${secondsLeft}`);
+    const timeStyle = getTimeStyle(secondsLeft);
+    this.timeText
+      .setText(`TIME ${secondsLeft}`)
+      .setColor(timeStyle.color)
+      .setShadow(0, 0, timeStyle.color, 10, false, true);
+
+    this.dangerOverlay.setAlpha(timeStyle.isUrgent && this.isRunning ? 0.05 : 0);
+    if (timeStyle.isUrgent && this.isRunning && secondsLeft !== this.lastUrgentSecond) {
+      this.lastUrgentSecond = secondsLeft;
+      this.tweens.add({
+        targets: this.timeText,
+        scaleX: 1.18,
+        scaleY: 1.18,
+        duration: 120,
+        yoyo: true,
+        ease: "Quad.easeOut",
+      });
+      this.flashScreen(NEON_THEME.palette.warning, 0.08, 100);
+    }
   }
 
-  setStatusText(message) {
-    this.statusText.setText(message);
+  setStatusText(message, color = "#bae6fd") {
+    this.statusText.setText(message).setColor(color).setShadow(0, 0, color, 10, false, true);
   }
 
   finishGame() {
@@ -724,8 +746,9 @@ class GameScene extends Phaser.Scene {
     this.playCue("finish");
     this.clearActiveTargets(true);
     this.clearTimers();
-    this.setStatusText(GAME_CONFIG.statusMessages.finish);
-    this.updateButtonVisual(this.startButton, "もういちど");
+    this.setStatusText(GAME_CONFIG.statusMessages.finish, NEON_THEME.palette.warning);
+    this.updateButtonVisual(this.startButton, "リトライ");
+    this.updateOverlayState("finished");
   }
 
   playLevelUpFeedback() {
@@ -734,18 +757,19 @@ class GameScene extends Phaser.Scene {
       this.levelBannerTween = null;
     }
 
-    this.levelBannerText.setText(`レベル ${this.tier}!`);
-    this.levelBanner.setVisible(true).setAlpha(0).setScale(0.72);
+    this.flashScreen("#facc15", 0.16, 160);
+    this.levelBannerText.setText(`LEVEL ${this.tier}`);
+    this.levelBanner.setVisible(true).setAlpha(0).setScale(0.7);
     this.levelBannerTween = this.tweens.add({
       targets: this.levelBanner,
       alpha: { from: 0, to: 1 },
-      scale: { from: 0.72, to: 1 },
-      duration: 200,
+      scale: { from: 0.7, to: 1.1 },
+      duration: 180,
       ease: "Back.easeOut",
       yoyo: true,
-      hold: 360,
+      hold: 260,
       onComplete: () => {
-        this.levelBanner.setVisible(false).setAlpha(0).setScale(0.72);
+        this.levelBanner.setVisible(false).setAlpha(0).setScale(0.7);
         this.levelBannerTween = null;
       },
     });
@@ -760,7 +784,7 @@ class GameScene extends Phaser.Scene {
   }
 
   getSoundLabel() {
-    return this.audioEnabled ? "おと ON" : "おと OFF";
+    return this.audioEnabled ? "サウンド ON" : "サウンド OFF";
   }
 
   playCue(name) {
@@ -807,13 +831,15 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    const bubble = this.add.circle(cell.x, cell.y, Math.max(12, cell.size * 0.09), color, 0.52);
+    const ring = this.add.circle(cell.x, cell.y, Math.max(14, cell.size * 0.12), color, 0)
+      .setStrokeStyle(3, color, 0.92);
     this.tweens.add({
-      targets: bubble,
+      targets: ring,
       alpha: 0,
-      scale: 1.85,
+      scale: 1.8,
       duration: 180,
-      onComplete: () => bubble.destroy(),
+      ease: "Quad.easeOut",
+      onComplete: () => ring.destroy(),
     });
   }
 
@@ -822,25 +848,34 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    const ripple = this.add.circle(cell.x, cell.y, Math.max(14, cell.size * 0.12), color, 0.18)
+      .setStrokeStyle(3, color, 0.92)
+      .setBlendMode(Phaser.BlendModes.SCREEN);
+    this.tweens.add({
+      targets: ripple,
+      scale: 2.2,
+      alpha: 0,
+      duration: 260,
+      ease: "Quad.easeOut",
+      onComplete: () => ripple.destroy(),
+    });
+
     const burstCount = 6;
     for (let i = 0; i < burstCount; i += 1) {
-      const angle = Phaser.Math.DegToRad((360 / burstCount) * i);
-      const sparkle = i % 2 === 0
-        ? this.add.text(cell.x, cell.y, "✨", {
-            fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif",
-            fontSize: `${Math.round(cell.size * 0.16)}px`,
-          }).setOrigin(0.5)
-        : this.add.circle(cell.x, cell.y, Math.max(6, cell.size * 0.045), color, 0.85);
-      const distance = Math.max(24, cell.size * 0.23);
+      const angleDeg = (360 / burstCount) * i;
+      const angle = Phaser.Math.DegToRad(angleDeg);
+      const ray = this.add.rectangle(cell.x, cell.y, Math.max(8, cell.size * 0.06), 4, color, 0.95)
+        .setAngle(angleDeg);
+      const distance = Math.max(28, cell.size * 0.24);
       this.tweens.add({
-        targets: sparkle,
+        targets: ray,
         x: cell.x + Math.cos(angle) * distance,
         y: cell.y + Math.sin(angle) * distance,
         alpha: 0,
-        scale: 1.4,
-        duration: 260,
+        scaleX: 1.5,
+        duration: 220,
         ease: "Quad.easeOut",
-        onComplete: () => sparkle.destroy(),
+        onComplete: () => ray.destroy(),
       });
     }
   }
@@ -849,8 +884,8 @@ class GameScene extends Phaser.Scene {
     if (target.popTween) {
       target.popTween.stop();
     }
-    if (target.haloTween) {
-      target.haloTween.stop();
+    if (target.ringTween) {
+      target.ringTween.stop();
     }
     if (target.bobTween) {
       target.bobTween.stop();
@@ -866,19 +901,21 @@ class GameScene extends Phaser.Scene {
     this.stopTargetTweens(targetToRemove);
 
     if (!animate) {
-      targetToRemove.halo.destroy();
+      targetToRemove.ring.destroy();
+      targetToRemove.core.destroy();
       targetToRemove.node.destroy();
       return;
     }
 
     this.tweens.add({
-      targets: [targetToRemove.halo, targetToRemove.node],
+      targets: [targetToRemove.ring, targetToRemove.core, targetToRemove.node],
       alpha: 0,
       scale: isHit ? 1.24 : 0.8,
       duration: isHit ? 180 : 140,
       ease: "Quad.easeOut",
       onComplete: () => {
-        targetToRemove.halo.destroy();
+        targetToRemove.ring.destroy();
+        targetToRemove.core.destroy();
         targetToRemove.node.destroy();
       },
     });
@@ -940,46 +977,49 @@ class GameScene extends Phaser.Scene {
   layout(width, height) {
     const w = Math.max(320, width);
     const h = Math.max(480, height);
-    const topArea = Math.max(244, h * 0.29);
-    const bottomArea = Math.max(180, h * 0.24);
-    const availableBoardHeight = Math.max(220, h - topArea - bottomArea - 24);
-    const boardSize = Math.min(w * 0.9, availableBoardHeight);
+    const columnWidth = Math.min(w - 32, NEON_THEME.layout.maxBoardWidth);
+    const topArea = Math.max(254, h * 0.27);
+    const bottomArea = Math.max(168, h * 0.2);
+    const availableBoardHeight = Math.max(240, h - topArea - bottomArea - 30);
+    const boardSize = Math.min(columnWidth, availableBoardHeight);
     const boardLeft = (w - boardSize) * 0.5;
-    const boardTop = topArea + Math.max(8, (availableBoardHeight - boardSize) * 0.5);
-    const cellSize = boardSize / GAME_CONFIG.gridSize;
+    const boardTop = topArea + Math.max(12, (availableBoardHeight - boardSize) * 0.5);
 
     this.layoutBackdrop(w, h, boardLeft, boardTop, boardSize);
 
-    const scoreFontSize = Phaser.Math.Clamp(Math.round(w * 0.102), 38, 56);
-    const timeFontSize = Phaser.Math.Clamp(Math.round(w * 0.056), 24, 32);
-    const badgeScale = Phaser.Math.Clamp(w / 768, 0.82, 1);
-    const statusFontSize = Phaser.Math.Clamp(Math.round(w * 0.06), 26, 36);
+    const hudWidth = Math.min(columnWidth, w - 26);
+    const hudX = w * 0.5;
+    const hudTop = Math.max(18, h * 0.028);
+    this.drawHud(hudX, hudTop, hudWidth);
+
+    const scoreFontSize = Phaser.Math.Clamp(Math.round(w * 0.09), 36, 52);
+    const timeFontSize = Phaser.Math.Clamp(Math.round(w * 0.05), 24, 32);
+    const statusFontSize = Phaser.Math.Clamp(Math.round(w * 0.042), 20, 28);
+    const badgeScale = Phaser.Math.Clamp(columnWidth / 520, 0.9, 1.08);
     this.scoreText.setFontSize(scoreFontSize);
     this.timeText.setFontSize(timeFontSize);
     this.statusText.setFontSize(statusFontSize);
-    this.levelBadgeText.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.04), 22, 28));
+    this.levelBadgeText.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.038), 18, 24));
     this.levelBadge.setScale(badgeScale);
 
-    this.scoreText.setPosition(w * 0.5, Math.max(18, topArea * 0.05));
-    const scoreBottom = this.scoreText.y + this.scoreText.height;
-    this.timeText.setPosition(w * 0.5, scoreBottom + Math.max(6, h * 0.006));
-    const timeBottom = this.timeText.y + this.timeText.height;
-    this.levelBadge.setPosition(w * 0.5, timeBottom + 30);
-    const badgeBottom = this.levelBadge.y + (54 * badgeScale) * 0.5;
-    this.statusText.setPosition(w * 0.5, badgeBottom + Math.max(12, h * 0.01));
-    this.levelBanner.setPosition(w * 0.5, boardTop + boardSize * 0.42);
+    this.scoreText.setPosition(hudX, hudTop + 16);
+    this.timeText.setPosition(hudX, this.scoreText.y + this.scoreText.height + 6);
+    this.levelBadge.setPosition(hudX, this.timeText.y + this.timeText.height + 30);
+    this.statusText.setPosition(hudX, this.levelBadge.y + 30, 0);
+    this.levelBanner.setPosition(hudX, boardTop + boardSize * 0.44);
+    this.overlayContainer.setPosition(hudX, boardTop + boardSize * 0.5);
 
-    const buttonsY = h - bottomArea * 0.5;
-    const sidePadding = Phaser.Math.Clamp(w * 0.028, 10, 20);
-    const buttonGap = Phaser.Math.Clamp(w * 0.02, 8, 16);
-    const desiredButtonWidth = Math.min(280, (w - sidePadding * 2 - buttonGap) * 0.5);
-    const desiredButtonHeight = Phaser.Math.Clamp(h * 0.095, 76, 94);
+    const buttonsY = h - bottomArea * 0.46;
+    const sidePadding = Math.max((w - columnWidth) * 0.5, 16);
+    const buttonGap = Phaser.Math.Clamp(columnWidth * 0.04, 12, 22);
+    const desiredButtonWidth = Math.min(280, (columnWidth - buttonGap) * 0.5);
+    const desiredButtonHeight = Phaser.Math.Clamp(h * 0.085, 74, 88);
     const buttonScale = Phaser.Math.Clamp(
       Math.min(
         desiredButtonWidth / this.startButton.baseWidth,
         desiredButtonHeight / this.startButton.baseHeight,
       ),
-      0.72,
+      0.76,
       1,
     );
     const buttonWidth = this.startButton.baseWidth * buttonScale;
@@ -989,95 +1029,123 @@ class GameScene extends Phaser.Scene {
     this.setButtonPosition(this.startButton, sidePadding + buttonWidth * 0.5, buttonsY);
     this.setButtonPosition(this.soundButton, w - sidePadding - buttonWidth * 0.5, buttonsY);
 
-    this.drawBoard(boardLeft, boardTop, boardSize, cellSize);
-
+    const boardMetrics = this.drawBoard(boardLeft, boardTop, boardSize);
     for (let row = 0; row < GAME_CONFIG.gridSize; row += 1) {
       for (let col = 0; col < GAME_CONFIG.gridSize; col += 1) {
         const index = row * GAME_CONFIG.gridSize + col;
-        const centerX = boardLeft + col * cellSize + cellSize * 0.5;
-        const centerY = boardTop + row * cellSize + cellSize * 0.5;
-        this.cellCenters[index] = { x: centerX, y: centerY, size: cellSize };
+        const centerX = boardLeft + boardMetrics.padding + col * (boardMetrics.cellSize + boardMetrics.gap) + boardMetrics.cellSize * 0.5;
+        const centerY = boardTop + boardMetrics.padding + row * (boardMetrics.cellSize + boardMetrics.gap) + boardMetrics.cellSize * 0.5;
+        this.cellCenters[index] = { x: centerX, y: centerY, size: boardMetrics.cellSize };
         this.cellZones[index]
           .setPosition(centerX, centerY)
-          .setSize(cellSize * 1.08, cellSize * 1.08)
+          .setSize(boardMetrics.cellSize * 1.08, boardMetrics.cellSize * 1.08)
           .setInteractive();
       }
     }
 
+    this.flashOverlay.setSize(w, h);
+    this.dangerOverlay.setSize(w, h);
     this.syncActiveTargetsToLayout();
   }
 
   layoutBackdrop(width, height, boardLeft, boardTop, boardSize) {
     this.backgroundGraphics.clear();
-    this.backgroundGraphics.fillStyle(0xffffff, 0.18);
-    this.backgroundGraphics.fillCircle(width * 0.15, height * 0.14, width * 0.11);
-    this.backgroundGraphics.fillCircle(width * 0.82, height * 0.22, width * 0.085);
-    this.backgroundGraphics.fillCircle(width * 0.87, height * 0.6, width * 0.09);
-    this.backgroundGraphics.fillStyle(0xfef7d2, 0.38);
-    this.backgroundGraphics.fillCircle(width * 0.18, boardTop + boardSize * 0.76, width * 0.065);
-    this.backgroundGraphics.fillCircle(width * 0.78, boardTop + boardSize * 0.84, width * 0.055);
+    this.backgroundGraphics.fillStyle(hexToNumber(NEON_THEME.palette.background), 1);
+    this.backgroundGraphics.fillRect(0, 0, width, height);
+    this.backgroundGraphics.fillStyle(hexToNumber(NEON_THEME.palette.backgroundMid), 0.32);
+    this.backgroundGraphics.fillCircle(width * 0.18, height * 0.18, width * 0.18);
+    this.backgroundGraphics.fillCircle(width * 0.84, boardTop + boardSize * 0.14, width * 0.14);
+    this.backgroundGraphics.fillStyle(hexToNumber(NEON_THEME.palette.panelSoft), 0.6);
+    this.backgroundGraphics.fillRoundedRect(10, 10, width - 20, height - 20, 30);
+    this.backgroundGraphics.lineStyle(1, hexToNumber(NEON_THEME.palette.gridLine), 0.7);
+    for (let i = 0; i < 6; i += 1) {
+      const y = height * (0.12 + i * 0.12);
+      this.backgroundGraphics.lineBetween(18, y, width - 18, y);
+    }
 
-    const cloudPositions = [
-      { x: width * 0.2, y: height * 0.12, scale: 0.78 },
-      { x: width * 0.8, y: height * 0.16, scale: 0.68 },
-      { x: width * 0.52, y: boardTop - Math.max(18, boardSize * 0.12), scale: 0.64 },
-    ];
-    this.decorations.clouds.forEach((cloud, index) => {
-      const spec = cloudPositions[index];
-      cloud.setPosition(spec.x, spec.y).setScale(spec.scale);
+    this.decorations.ambientOrbs.forEach((orb, index) => {
+      const positions = [
+        { x: width * 0.14, y: height * 0.22, radius: width * 0.07 },
+        { x: width * 0.82, y: height * 0.18, radius: width * 0.06 },
+        { x: width * 0.18, y: boardTop + boardSize * 0.9, radius: width * 0.05 },
+        { x: width * 0.85, y: boardTop + boardSize * 0.82, radius: width * 0.05 },
+      ];
+      const spec = positions[index];
+      orb.setPosition(spec.x, spec.y).setRadius(spec.radius);
     });
 
-    const bubblePositions = [
-      { x: width * 0.08, y: boardTop + boardSize * 0.14, radius: width * 0.022, alpha: 0.22 },
-      { x: width * 0.92, y: boardTop + boardSize * 0.2, radius: width * 0.018, alpha: 0.2 },
-      { x: width * 0.12, y: boardTop + boardSize * 0.54, radius: width * 0.028, alpha: 0.18 },
-      { x: width * 0.88, y: boardTop + boardSize * 0.64, radius: width * 0.022, alpha: 0.17 },
-      { x: width * 0.5, y: boardTop + boardSize + Math.max(30, height * 0.04), radius: width * 0.026, alpha: 0.15 },
-    ];
-    this.decorations.bubbles.forEach((bubble, index) => {
-      const spec = bubblePositions[index];
-      bubble.setPosition(spec.x, spec.y).setRadius(spec.radius).setAlpha(spec.alpha);
+    this.decorations.stars.forEach((star, index) => {
+      const x = 24 + ((index * 73) % Math.max(60, width - 48));
+      const y = 28 + ((index * 97) % Math.max(80, boardTop - 36));
+      star.setPosition(x, y);
     });
   }
 
-  drawBoard(boardLeft, boardTop, boardSize, cellSize) {
+  drawHud(centerX, topY, width) {
+    this.hudGraphics.clear();
+    this.hudGraphics.fillStyle(hexToNumber(NEON_THEME.palette.panel), 0.82);
+    this.hudGraphics.fillRoundedRect(centerX - width * 0.5, topY, width, 170, 28);
+    this.hudGraphics.lineStyle(2, hexToNumber(NEON_THEME.palette.gridGlow), 0.42);
+    this.hudGraphics.strokeRoundedRect(centerX - width * 0.5, topY, width, 170, 28);
+  }
+
+  drawBoard(boardLeft, boardTop, boardSize) {
+    const padding = Phaser.Math.Clamp(boardSize * 0.045, 16, 22);
+    const gap = NEON_THEME.layout.cellGap;
+    const cellSize = (boardSize - padding * 2 - gap * (GAME_CONFIG.gridSize - 1)) / GAME_CONFIG.gridSize;
+
     this.boardGraphics.clear();
-    this.boardGraphics.fillStyle(0xffffff, 0.18);
-    this.boardGraphics.fillRoundedRect(boardLeft + 8, boardTop + 14, boardSize, boardSize, 30);
-    this.boardGraphics.fillStyle(0xf9fcff, 0.97);
-    this.boardGraphics.fillRoundedRect(boardLeft, boardTop, boardSize, boardSize, 30);
-    this.boardGraphics.lineStyle(5, 0xc9ddff, 1);
-    this.boardGraphics.strokeRoundedRect(boardLeft, boardTop, boardSize, boardSize, 30);
+    this.boardGraphics.fillStyle(hexToNumber(NEON_THEME.palette.panel), 0.96);
+    this.boardGraphics.fillRoundedRect(boardLeft, boardTop, boardSize, boardSize, NEON_THEME.layout.boardCornerRadius);
+    this.boardGraphics.lineStyle(3, hexToNumber(NEON_THEME.palette.gridGlow), 0.22);
+    this.boardGraphics.strokeRoundedRect(boardLeft, boardTop, boardSize, boardSize, NEON_THEME.layout.boardCornerRadius);
 
     for (let row = 0; row < GAME_CONFIG.gridSize; row += 1) {
       for (let col = 0; col < GAME_CONFIG.gridSize; col += 1) {
-        const cellX = boardLeft + col * cellSize;
-        const cellY = boardTop + row * cellSize;
-        const fillColor = (row + col) % 2 === 0 ? 0xfefefe : 0xf4f9ff;
-        this.boardGraphics.fillStyle(fillColor, 1);
-        this.boardGraphics.fillRect(cellX + 2, cellY + 2, cellSize - 4, cellSize - 4);
+        const cellX = boardLeft + padding + col * (cellSize + gap);
+        const cellY = boardTop + padding + row * (cellSize + gap);
+        const fillColor = (row + col) % 2 === 0 ? NEON_THEME.palette.cellFill : NEON_THEME.palette.cellHot;
+        this.boardGraphics.fillStyle(hexToNumber(fillColor), 0.94);
+        this.boardGraphics.fillRoundedRect(cellX, cellY, cellSize, cellSize, 18);
+        this.boardGraphics.lineStyle(2, hexToNumber(NEON_THEME.palette.gridGlow), 0.48);
+        this.boardGraphics.strokeRoundedRect(cellX, cellY, cellSize, cellSize, 18);
       }
     }
 
-    this.boardGraphics.lineStyle(3, 0xdbe7f7, 1);
-    for (let i = 1; i < GAME_CONFIG.gridSize; i += 1) {
-      const lineX = boardLeft + i * cellSize;
-      const lineY = boardTop + i * cellSize;
-      this.boardGraphics.lineBetween(lineX, boardTop, lineX, boardTop + boardSize);
-      this.boardGraphics.lineBetween(boardLeft, lineY, boardLeft + boardSize, lineY);
-    }
+    return { padding, gap, cellSize };
   }
 
   syncActiveTargetsToLayout() {
     this.activeTargets.forEach((target) => {
       const center = this.cellCenters[target.cellIndex];
-      const haloRadius = Math.max(24, center.size * 0.28 * target.scaleFactor);
-      const fontSize = Math.round(center.size * 0.46 * target.scaleFactor);
-      target.halo.setPosition(center.x, center.y).setRadius(haloRadius);
-      target.node
-        .setPosition(center.x, center.y)
-        .setFontSize(`${fontSize}px`);
+      const radius = Math.max(24, center.size * 0.29 * target.scaleFactor);
+      const fontSize = Math.round(center.size * 0.48 * target.scaleFactor);
+      target.ring.setPosition(center.x, center.y).setRadius(radius);
+      target.core.setPosition(center.x, center.y).setRadius(radius * 0.62);
+      target.node.setPosition(center.x, center.y).setFontSize(`${fontSize}px`);
     });
+  }
+
+  flashScreen(color, alpha = 0.18, duration = 140) {
+    this.flashOverlay.setFillStyle(hexToNumber(color), alpha).setAlpha(alpha);
+    this.tweens.add({
+      targets: this.flashOverlay,
+      alpha: 0,
+      duration,
+      ease: "Quad.easeOut",
+    });
+  }
+
+  updateOverlayState(mode) {
+    this.overlayMode = mode;
+    if (mode === "playing") {
+      this.overlayContainer.setVisible(false);
+      return;
+    }
+    const copy = getOverlayCopy(mode);
+    this.overlayHeadline.setText(copy.headline);
+    this.overlaySubline.setText(copy.subline);
+    this.overlayContainer.setVisible(true).setAlpha(1).setScale(mode === "finished" ? 1.04 : 1);
   }
 
   onResize(gameSize) {
@@ -1087,18 +1155,20 @@ class GameScene extends Phaser.Scene {
   snapshotState() {
     return {
       mode: this.isRunning ? "playing" : "idle",
+      overlayMode: this.overlayMode,
       score: this.score,
       tier: this.tier,
       remainingTimeSec: Math.ceil(Math.max(0, this.remainingTimeMs) / 1000),
       roundMsCurrent: this.roundMsCurrent,
       status: this.statusText?.text ?? "",
+      soundEnabled: this.audioEnabled,
       activeTargets: this.activeTargets.map((target) => ({
         cellIndex: target.cellIndex,
         animal: target.animal,
       })),
       buttons: {
-        start: this.startButton?.text?.text ?? "",
-        sound: this.soundButton?.text?.text ?? "",
+        start: this.startButton?.labelNode?.text ?? "",
+        sound: this.soundButton?.labelNode?.text ?? "",
       },
     };
   }
@@ -1113,7 +1183,7 @@ class GameScene extends Phaser.Scene {
 const phaserConfig = {
   type: Phaser.AUTO,
   parent: "game-root",
-  backgroundColor: "#bfeaff",
+  backgroundColor: NEON_THEME.palette.background,
   width: 768,
   height: 1024,
   scene: [BootScene, GameScene],

@@ -15,3 +15,14 @@ Original prompt: どうぶつテーマ化と段階難化の改善プランを実
 
 TODO
 - ローカルコミット `9f84dd1` は作成済み。`git push origin main` はこの実行環境のポリシーで拒否されたため、必要なら手動 push と Pages 確認を行う。
+
+2026-03-21
+- 画面全体をネオンアーケード方向へ再設計。空色背景と雲ボタンをやめ、暗い群青背景、発光HUD、ネオン盤面、カプセル型ボタンへ差し替えた。
+- `docs/plans/2026-03-21-neon-arcade-design.md` と `docs/plans/2026-03-21-neon-arcade-implementation.md` を追加し、今回の採用方針と実装ステップを記録した。
+- `src/themeStyle.js` を追加して、背景色、HUD色、警告色、開始/終了オーバーレイ文言をテーマとして切り出した。
+- `src/buttonStyle.js` をネオンボタン仕様へ更新し、`tests/button-style.test.mjs` を雲ボタン前提からネオンカプセル前提へ更新した。
+- `src/main.js` を全面更新し、背景粒子、開始/終了オーバーレイ、ネオンHUD、ネオン盤面、ヒット波紋、放射線、危険時間演出、レベルアップ演出を追加した。
+- Docker 上で `node --test tests/theme-style.test.mjs tests/button-style.test.mjs` を実行し、6件すべて通過した。
+- Docker 上で `node --check src/main.js` を実行し、構文エラーがないことを確認した。
+- Docker 上の静的サーバ + Playwright で `390x844` と `768x1024` を確認し、成果物を `tmp/ui-check/neon-mobile-idle.png`, `tmp/ui-check/neon-mobile-playing.png`, `tmp/ui-check/neon-tablet-idle.png`, `tmp/ui-check/neon-tablet-playing.png` に保存した。
+- Playwright のコンソールはアプリ例外ではなく、スクリーンショット取得時の WebGL `ReadPixels` 警告のみ確認した。
