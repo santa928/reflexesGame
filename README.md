@@ -25,7 +25,12 @@
 
 ```text
 .
+├── icons/
+│   ├── icon-192.png
+│   └── icon-512.png
 ├── index.html
+├── manifest.webmanifest
+├── service-worker.js
 ├── styles.css
 ├── src/
 │   ├── buttonStyle.js
@@ -33,12 +38,22 @@
 │   ├── spawnLogic.js
 │   ├── targetStyle.js
 │   └── themeStyle.js
+├── vendor/
+│   └── phaser.min.js
 └── tests/
     ├── button-style.test.mjs
+    ├── pwa.test.mjs
     ├── spawn-logic.test.mjs
     ├── target-style.test.mjs
     └── theme-style.test.mjs
 ```
+
+## PWA / オフライン起動
+
+- `manifest.webmanifest` と `service-worker.js` を追加しているため、対応ブラウザではホーム画面追加ができます
+- `Phaser 3.70.0` は `vendor/phaser.min.js` に同梱しているため、外部 CDN なしで起動します
+- 一度オンラインで読み込んだ端末では、以後はオフライン再読込でもゲームが起動します
+- ただし、ブラウザのサイトデータを消した直後や初回訪問時は、配信元へ 1 回アクセスが必要です
 
 ## GitHub Pages で公開する手順
 
@@ -64,3 +79,4 @@
 7. レベル `3-4` で 1 匹押したあとも、見逃したあとも、残りターゲットが消えないこと
 8. `残り5秒` で `じかん` が警告色に変わり、視認できること
 9. `tmp/ui-check/` のスクリーンショットで、HUD・盤面・下部ボタンに重なりやはみ出しがないこと
+10. 一度オンラインで開いたあと、オフライン再読込でも `ぴかぴかタッチ` が起動すること

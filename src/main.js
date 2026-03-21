@@ -1299,15 +1299,30 @@ function updateRotateHint() {
   return shouldShow;
 }
 
+/**
+ * Registers the local app shell cache so the game can relaunch offline
+ * after the first successful online visit.
+ */
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+
+  navigator.serviceWorker.register("./service-worker.js", { scope: "./" }).catch((error) => {
+    console.warn("Service worker registration failed", error);
+  });
+}
+
 window.addEventListener("resize", updateRotateHint);
 window.addEventListener("orientationchange", updateRotateHint);
 
 window.addEventListener("load", () => {
   if (!window.Phaser) {
-    throw new Error("Phaser の読み込みに失敗しました。ネットワーク接続を確認してください。");
+    throw new Error("Phaser の起動ファイルが見つかりません。配信アセットを確認してください。");
   }
   const game = new Phaser.Game(phaserConfig);
   updateRotateHint();
+  registerServiceWorker();
   window.__reflexesGame = game;
   window.__reflexesGameUi = {
     updateRotateHint,

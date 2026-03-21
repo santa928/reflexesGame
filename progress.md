@@ -17,6 +17,15 @@ TODO
 - ローカルコミット `9f84dd1` は作成済み。`git push origin main` はこの実行環境のポリシーで拒否されたため、必要なら手動 push と Pages 確認を行う。
 
 2026-03-21
+- `docs/plans/2026-03-21-pwa-offline-design.md` と `docs/plans/2026-03-21-pwa-offline-implementation.md` を追加し、自己完結 PWA 化の要件と手順を記録した。
+- `index.html` の `Phaser 3.70.0` 参照を CDN から `vendor/phaser.min.js` へ切り替え、`manifest.webmanifest`、`service-worker.js`、`icons/icon-192.png`、`icons/icon-512.png` を追加した。
+- `src/main.js` に service worker 登録を追加し、初回オンライン読込後はオフライン再読込でもアプリシェルから起動できるようにした。
+- `tests/pwa.test.mjs` を追加し、ローカル `Phaser` 参照、manifest 定義、service worker の事前キャッシュ対象を回帰テストで固定した。
+- Docker 上で `node --test tests/pwa.test.mjs` を実行し、PWA 向け focused test 3 件が通ることを確認した。
+- Docker 上で `node --test tests/*.test.mjs` と `node --check src/main.js` を実行し、既存 19 テストすべて通過した。
+- Docker 上の `nginx:alpine` で `http://127.0.0.1:18080` を配信し、Playwright で `390x844` と `768x1024` の `tmp/ui-check/pwa-mobile.png`, `tmp/ui-check/pwa-tablet.png` を保存した。
+- Playwright でページをオフラインに切り替えて再読込し、`window.render_game_to_text()` が再読込前後で同一の idle 状態を返すことを確認した。証跡として `tmp/ui-check/pwa-mobile-offline.png` を保存した。
+- Playwright のコンソールログは `Errors: 0 / Warnings: 0` を確認した。
 - 画面全体をネオンアーケード方向へ再設計。空色背景と雲ボタンをやめ、暗い群青背景、発光HUD、ネオン盤面、カプセル型ボタンへ差し替えた。
 - `docs/plans/2026-03-21-neon-arcade-design.md` と `docs/plans/2026-03-21-neon-arcade-implementation.md` を追加し、今回の採用方針と実装ステップを記録した。
 - `src/themeStyle.js` を追加して、背景色、HUD色、警告色、開始/終了オーバーレイ文言をテーマとして切り出した。
