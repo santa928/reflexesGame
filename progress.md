@@ -37,3 +37,9 @@ TODO
 - `src/buttonStyle.js` のボタンフォントを丸ゴ寄りへ変更し、日本語ラベルでも読みにくくならないよう字間を詰めた。
 - Docker 上で `node --test tests/theme-style.test.mjs tests/button-style.test.mjs tests/target-style.test.mjs` と `node --check src/main.js` を実行し、文言差し替え後も通過することを確認した。
 - Playwright で `tmp/ui-check/japanese-mobile-idle.png`, `tmp/ui-check/japanese-mobile-playing.png`, `tmp/ui-check/japanese-tablet-idle.png`, `tmp/ui-check/japanese-tablet-playing.png` を保存し、`390x844` と `768x1024` で日本語文言の配置崩れがないことを確認した。
+- 日本語化後の下部ボタンは、英語前提の `左アクセントバー + 中央ラベル` 構図のまま残っていたため、字面が左へ引かれて不自然に見えることを確認した。
+- `docs/plans/2026-03-21-button-balance-design.md` と `docs/plans/2026-03-21-button-balance-implementation.md` を追加し、ボタン重心修正の方針と手順を記録した。
+- `src/buttonStyle.js` のアクセントバーを中央アンダーラインへ移し、文字サイズを `24`、字間を `4`、ラベル Y オフセットを `-4`、ボタン glow を `0.6` に調整した。
+- `src/main.js` はラベルの `letterSpacing` と `offsetX/offsetY` を仕様から反映するよう変更した。
+- Docker 上で `node --test tests/button-style.test.mjs tests/theme-style.test.mjs tests/target-style.test.mjs` と `node --check src/main.js` を実行し、修正後も通過することを確認した。
+- Playwright で `tmp/ui-check/button-balance-mobile-idle.png` と `tmp/ui-check/button-balance-tablet-idle.png` を保存し、`390x844` と `768x1024` の両方でボタン内部の左右バランスが改善したことを確認した。

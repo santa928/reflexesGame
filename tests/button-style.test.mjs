@@ -9,7 +9,10 @@ test("start button uses arcade capsule geometry and cyan accent", () => {
   assert.equal(spec.label.text, "スタート");
   assert.equal(spec.shape.body.radius, 30);
   assert.equal(spec.shape.innerBody.height, 54);
-  assert.equal(spec.shape.accentBar.width, 56);
+  assert.equal(spec.shape.accentBar.x, -40);
+  assert.equal(spec.shape.accentBar.y, 12);
+  assert.equal(spec.shape.accentBar.width, 80);
+  assert.equal(spec.shape.accentBar.height, 6);
   assert.equal(spec.colors.accentColor, "#67E8F9");
 });
 
@@ -31,4 +34,8 @@ test("hover and press motion stays fast and arcade-like", () => {
   assert.equal(spec.interaction.pressScale, 0.96);
   assert.equal(spec.interaction.pressOffsetY, 4);
   assert.equal(spec.label.fontFamily, "'Hiragino Maru Gothic ProN', 'Hiragino Sans', sans-serif");
+  assert.equal(spec.label.fontSize, 24);
+  assert.equal(spec.label.letterSpacing, 4);
+  assert.equal(spec.label.offsetY, -4);
+  assert.equal(spec.interaction.glowAlpha, 0.6);
 });

@@ -325,7 +325,10 @@ class GameScene extends Phaser.Scene {
       color: spec.label.textColor,
       fontStyle: "700",
     }).setOrigin(0.5);
-    labelNode.setShadow(0, 0, spec.colors.glowColor, 10, false, true);
+    labelNode
+      .setLetterSpacing(spec.label.letterSpacing)
+      .setPosition(spec.label.offsetX ?? 0, spec.label.offsetY ?? 0)
+      .setShadow(0, 0, spec.colors.glowColor, spec.label.glowBlur ?? 10, false, true);
     const frontLayer = this.add.container(0, 0, [core, accent, labelNode]);
     const hitArea = this.add.rectangle(0, 0, spec.size.width, spec.size.height, 0xffffff, 0.001)
       .setInteractive({ useHandCursor: true });
@@ -406,7 +409,9 @@ class GameScene extends Phaser.Scene {
       .setFontFamily(spec.label.fontFamily)
       .setFontSize(spec.label.fontSize)
       .setColor(spec.label.textColor)
-      .setShadow(0, 0, spec.colors.glowColor, 10, false, true);
+      .setLetterSpacing(spec.label.letterSpacing)
+      .setPosition(spec.label.offsetX ?? 0, spec.label.offsetY ?? 0)
+      .setShadow(0, 0, spec.colors.glowColor, spec.label.glowBlur ?? 10, false, true);
     this.refreshButtonRestingState(button);
   }
 

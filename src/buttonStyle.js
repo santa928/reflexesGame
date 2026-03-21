@@ -19,11 +19,11 @@ const BASE_SHAPE = Object.freeze({
     radius: 26,
   }),
   accentBar: Object.freeze({
-    x: -100,
-    y: -8,
-    width: 56,
-    height: 8,
-    radius: 4,
+    x: -40,
+    y: 12,
+    width: 80,
+    height: 6,
+    radius: 3,
   }),
 });
 
@@ -79,15 +79,18 @@ export function buildArcadeButtonSpec({ kind, labelText, soundEnabled = false })
       text: labelText ?? config.defaultLabel,
       textColor: "#E6F7FF",
       fontFamily: "'Hiragino Maru Gothic ProN', 'Hiragino Sans', sans-serif",
-      fontSize: 28,
-      letterSpacing: 2,
+      fontSize: 24,
+      letterSpacing: 4,
+      offsetX: 0,
+      offsetY: -4,
+      glowBlur: 8,
     },
     interaction: {
       hoverScale: 1.04,
       pressScale: 0.96,
       pressOffsetY: 4,
       hoverLiftY: -3,
-      glowAlpha: 0.82,
+      glowAlpha: 0.6,
     },
   };
 }
