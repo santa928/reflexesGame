@@ -1,9 +1,11 @@
 import { buildArcadeButtonSpec, hexToNumber } from "./buttonStyle.js";
 import {
+  GAME_MODES,
   NEON_THEME,
   computeTopRightControlLayout,
   formatBreachLevel,
   formatUptime,
+  getGameModeCopy,
   getOverlayCopy,
   getPauseMenuCopy,
   getTimeStyle,
@@ -140,6 +142,7 @@ class GameScene extends Phaser.Scene {
     this.nodeVariantPool = NODE_VARIANTS.map((variant) => variant.id);
     this.lastUrgentSecond = null;
     this.screenMode = "home";
+    this.selectedMode = "normal";
     this.isMenuOpen = false;
     this.wasRunningBeforeMenu = false;
     this.decorations = {
@@ -160,6 +163,7 @@ class GameScene extends Phaser.Scene {
 
   setupState() {
     const preservedAudioEnabled = this.audioEnabled;
+    const preservedMode = this.selectedMode ?? GAME_MODES.normal;
     this.score = 0;
     this.tier = 1;
     this.currentTierConfig = this.getTierConfig(1);
@@ -175,6 +179,7 @@ class GameScene extends Phaser.Scene {
     this.nodeVariantPool = NODE_VARIANTS.map((variant) => variant.id);
     this.lastUrgentSecond = null;
     this.screenMode = "home";
+    this.selectedMode = preservedMode;
     this.isMenuOpen = false;
     this.wasRunningBeforeMenu = false;
   }
@@ -282,10 +287,27 @@ class GameScene extends Phaser.Scene {
       fontStyle: "700",
       align: "center",
     }).setOrigin(0.5);
+    this.homeModeTitle = this.add.text(0, 78, "モード", {
+      fontFamily: UI_FONT_STACK,
+      fontSize: "18px",
+      color: "#e2f3ff",
+      fontStyle: "700",
+      align: "center",
+    }).setOrigin(0.5);
+    this.homeModeHint = this.add.text(0, 112, "ミスでも げんてん なし", {
+      fontFamily: UI_FONT_STACK,
+      fontSize: "16px",
+      color: "#bae6fd",
+      fontStyle: "700",
+      align: "center",
+    }).setOrigin(0.5);
+    this.homeModeHint.setShadow(0, 0, "#22d3ee", 8, false, true);
     this.homeContainer = this.add.container(0, 0, [
       this.homeCardBackground,
       this.homeHeadline,
       this.homeSubline,
+      this.homeModeTitle,
+      this.homeModeHint,
     ]).setDepth(45);
     this.homePulseTween = this.tweens.add({
       targets: this.homeContainer,
@@ -323,6 +345,24 @@ class GameScene extends Phaser.Scene {
       kind: "start",
       label: "あそぶ！",
       onPress: () => this.startGame(),
+      depth: 46,
+    });
+
+    this.homeNormalModeButton = this.createButton({
+      kind: "mode",
+      label: "ふつう",
+      modeTone: GAME_MODES.normal,
+      selected: true,
+      onPress: () => this.selectGameMode(GAME_MODES.normal),
+      depth: 46,
+    });
+
+    this.homeSeriousModeButton = this.createButton({
+      kind: "mode",
+      label: "しんけん",
+      modeTone: GAME_MODES.serious,
+      selected: false,
+      onPress: () => this.selectGameMode(GAME_MODES.serious),
       depth: 46,
     });
 
@@ -392,11 +432,13 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  createButton({ kind, label, onPress, depth = 20 }) {
+  createButton({ kind, label, onPress, depth = 20, selected = false, modeTone = GAME_MODES.normal }) {
     const spec = buildArcadeButtonSpec({
       kind,
       labelText: label,
       soundEnabled: this.audioEnabled,
+      selected,
+      modeTone,
     });
     const glow = this.add.graphics().setAlpha(0.4);
     const shell = this.add.graphics();
@@ -434,6 +476,8 @@ class GameScene extends Phaser.Scene {
       pressTween: null,
       homePosition: { x: 0, y: 0 },
       isHovered: false,
+      selected,
+      modeTone,
       spec,
     };
 
@@ -468,6 +512,8 @@ class GameScene extends Phaser.Scene {
       kind: button.kind,
       labelText,
       soundEnabled: this.audioEnabled,
+      selected: button.selected,
+      modeTone: button.modeTone,
     });
     button.spec = spec;
     const { body, innerBody, accentBar } = spec.shape;
@@ -560,9 +606,25 @@ class GameScene extends Phaser.Scene {
 
   updateHomeCopy() {
     const copy = getOverlayCopy("home");
+    const modeCopy = getGameModeCopy(this.selectedMode);
     this.homeHeadline.setText(copy.headline);
     this.homeSubline.setText(copy.subline);
+    this.homeModeHint
+      .setText(modeCopy.description)
+      .setColor(this.selectedMode === "serious" ? NEON_THEME.palette.warning : "#bae6fd")
+      .setShadow(
+        0,
+        0,
+        this.selectedMode === "serious" ? NEON_THEME.palette.warning : "#22d3ee",
+        8,
+        false,
+        true,
+      );
     this.updateButtonVisual(this.homePlayButton, copy.cta);
+    this.homeNormalModeButton.selected = this.selectedMode === GAME_MODES.normal;
+    this.homeSeriousModeButton.selected = this.selectedMode === "serious";
+    this.updateButtonVisual(this.homeNormalModeButton, getGameModeCopy(GAME_MODES.normal).label);
+    this.updateButtonVisual(this.homeSeriousModeButton, getGameModeCopy(GAME_MODES.serious).label);
   }
 
   updateFinishedCopy() {
@@ -639,6 +701,8 @@ class GameScene extends Phaser.Scene {
 
     this.homeContainer.setVisible(isHome);
     this.setButtonVisible(this.homePlayButton, isHome);
+    this.setButtonVisible(this.homeNormalModeButton, isHome);
+    this.setButtonVisible(this.homeSeriousModeButton, isHome);
 
     this.updateFinishedCopy();
     this.overlayContainer.setVisible(isFinished && !showMenu);
@@ -673,6 +737,14 @@ class GameScene extends Phaser.Scene {
     this.isMenuOpen = true;
     this.refreshMenuCopy();
     this.refreshScreenUi();
+  }
+
+  selectGameMode(mode) {
+    if (!Object.values(GAME_MODES).includes(mode) || this.selectedMode === mode) {
+      return;
+    }
+    this.selectedMode = mode;
+    this.updateHomeCopy();
   }
 
   resumeGame() {
@@ -720,7 +792,7 @@ class GameScene extends Phaser.Scene {
     this.updateScoreText(false);
     this.updateTimeText();
     this.updateTierUi();
-    this.setStatusText("スタート!", NEON_THEME.palette.hud);
+    this.setStatusText(`${getGameModeCopy(this.selectedMode).label}で スタート!`, NEON_THEME.palette.hud);
     this.refreshMenuCopy();
     this.refreshScreenUi();
 
@@ -918,27 +990,24 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.score += 1;
-
-    const leveledUp = this.updateTierFromScore();
-    this.updateScoreText(true);
+    const { increasedTier } = this.adjustScore(1, true);
     this.updateDifficulty(true);
-    this.playCue(leveledUp ? "levelUp" : "hit");
+    this.playCue(increasedTier ? "levelUp" : "hit");
     this.showSuccessBurst(this.cellCenters[cellIndex], this.currentTierConfig.badgeColor);
     this.removeTarget(hitTarget, true, true);
     this.ensureTargetCapacity();
 
-    if (leveledUp) {
+    if (increasedTier) {
       this.playLevelUpFeedback();
     }
 
     this.setStatusText(
-      leveledUp
+      increasedTier
         ? "レベルアップ!"
         : this.activeTargets.length > 0
           ? `あと ${this.activeTargets.length}こ!`
           : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.hit),
-      leveledUp
+      increasedTier
         ? "#fde047"
         : this.activeTargets.length > 0
           ? "#a5f3fc"
@@ -955,7 +1024,14 @@ class GameScene extends Phaser.Scene {
     this.playCue("miss");
     this.cameras.main.shake(90, 0.006);
     this.flashScreen(NEON_THEME.palette.warning, 0.14, 120);
-    this.setStatusText(Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.miss), NEON_THEME.palette.warning);
+    const didPenalty = this.selectedMode === "serious";
+    if (didPenalty) {
+      this.adjustScore(-1, true);
+    }
+    this.setStatusText(
+      didPenalty ? "みのがし! -1" : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.miss),
+      NEON_THEME.palette.warning,
+    );
     this.showTapFeedback(this.cellCenters[target.cellIndex], hexToNumber(NEON_THEME.palette.warning));
     this.removeTarget(target, true, false);
     this.ensureTargetCapacity();
@@ -971,9 +1047,26 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.selectedMode === "serious") {
+      this.adjustScore(-1, true);
+    }
     this.cameras.main.shake(60, 0.004);
     this.showTapFeedback(this.cellCenters[cellIndex], hexToNumber(NEON_THEME.palette.warning));
-    this.setStatusText("ざんねん!", NEON_THEME.palette.warning);
+    this.setStatusText(
+      this.selectedMode === "serious" ? "ざんねん! -1" : "ざんねん!",
+      NEON_THEME.palette.warning,
+    );
+  }
+
+  adjustScore(delta, animate = false) {
+    const previousTier = this.tier;
+    this.score = Math.max(0, this.score + delta);
+    this.updateTierFromScore();
+    this.updateScoreText(animate);
+    return {
+      increasedTier: this.tier > previousTier,
+      decreasedTier: this.tier < previousTier,
+    };
   }
 
   updateTierFromScore() {
@@ -1327,9 +1420,11 @@ class GameScene extends Phaser.Scene {
     this.overlayHeadline.setFontSize(overlayHeadlineSize);
     this.overlaySubline.setFontSize(overlaySublineSize);
     this.overlayCardBackground.setSize(overlayCardWidth, 152);
-    this.homeCardBackground.setSize(Math.min(columnWidth * 0.98, 430), 182);
+    this.homeCardBackground.setSize(Math.min(columnWidth * 0.98, 430), 254);
     this.homeHeadline.setFontSize(overlayHeadlineSize);
     this.homeSubline.setFontSize(overlaySublineSize + 2);
+    this.homeModeTitle.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.04), 16, 20));
+    this.homeModeHint.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.036), 14, 18));
     this.levelBannerBackground.setSize(levelBannerWidth, 102);
     this.levelBannerText.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.045), 24, 30));
     this.menuCardBackground.setSize(Math.min(columnWidth * 0.98, 420), 280);
@@ -1346,9 +1441,17 @@ class GameScene extends Phaser.Scene {
     this.setButtonBaseScale(this.restartButton, ctaScale);
     this.setButtonPosition(this.restartButton, hudX, this.overlayContainer.y + 128);
 
-    const homeCenterY = Math.max(290, Math.round(h * 0.42));
+    const homeCenterY = Math.max(282, Math.round(h * 0.36));
     this.homeContainer.setPosition(hudX, homeCenterY);
-    this.setButtonPosition(this.homePlayButton, hudX, homeCenterY + 138);
+    const modeButtonScale = Phaser.Math.Clamp(columnWidth / 540, 0.68, 0.84);
+    const modeButtonGap = Math.min(28, columnWidth * 0.04);
+    const modeRowY = homeCenterY + 162;
+    const modeRowHalf = this.homeNormalModeButton.baseWidth * modeButtonScale * 0.5 + modeButtonGap * 0.5;
+    this.setButtonBaseScale(this.homeNormalModeButton, modeButtonScale);
+    this.setButtonBaseScale(this.homeSeriousModeButton, modeButtonScale);
+    this.setButtonPosition(this.homeNormalModeButton, hudX - modeRowHalf, modeRowY);
+    this.setButtonPosition(this.homeSeriousModeButton, hudX + modeRowHalf, modeRowY);
+    this.setButtonPosition(this.homePlayButton, hudX, modeRowY + 96);
 
     const pauseLayout = computeTopRightControlLayout({
       width: w,
@@ -1482,6 +1585,7 @@ class GameScene extends Phaser.Scene {
       mode: this.getSnapshotMode(),
       overlayMode: this.getSnapshotMode(),
       screenMode: this.screenMode,
+      selectedMode: this.selectedMode,
       menuOpen: this.isMenuOpen,
       score: this.score,
       tier: this.tier,
@@ -1496,6 +1600,8 @@ class GameScene extends Phaser.Scene {
       })),
       buttons: {
         home: this.homePlayButton?.labelNode?.text ?? "",
+        normalMode: this.homeNormalModeButton?.labelNode?.text ?? "",
+        seriousMode: this.homeSeriousModeButton?.labelNode?.text ?? "",
         pause: this.pauseButton?.labelNode?.text ?? "",
         continue: this.menuContinueButton?.labelNode?.text ?? "",
         sound: this.menuSoundButton?.labelNode?.text ?? "",

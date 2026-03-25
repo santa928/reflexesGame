@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  GAME_MODES,
   NEON_THEME,
   computeBottomControlLayout,
   computeTopRightControlLayout,
   formatBreachLevel,
   formatUptime,
+  getGameModeCopy,
   getOverlayCopy,
   getPauseMenuCopy,
   getTimeStyle,
@@ -39,6 +41,23 @@ test("overlay copy exposes start and finish headlines", () => {
     headline: "おしまい!",
     subline: "きみの てんすう",
     cta: "もういちど",
+  });
+});
+
+test("game mode copy exposes normal and serious labels", () => {
+  assert.equal(GAME_MODES.normal, "normal");
+  assert.equal(GAME_MODES.serious, "serious");
+  assert.deepEqual(getGameModeCopy("normal"), {
+    key: "normal",
+    label: "ふつう",
+    title: "ふつうモード",
+    description: "ミスでも げんてん なし",
+  });
+  assert.deepEqual(getGameModeCopy("serious"), {
+    key: "serious",
+    label: "しんけん",
+    title: "しんけんモード",
+    description: "ミスや みのがしで げんてん",
   });
 });
 

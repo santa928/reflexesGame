@@ -53,3 +53,31 @@ test("pause button uses a compact square body with a larger hit area", () => {
   assert.equal(spec.shape.body.radius, 24);
   assert.equal(spec.colors.accentColor, "#67E8F9");
 });
+
+test("mode buttons expose distinct selected tones for normal and serious", () => {
+  const normalSpec = buildArcadeButtonSpec({
+    kind: "mode",
+    labelText: "ふつう",
+    modeTone: "normal",
+    selected: true,
+  });
+  const seriousSpec = buildArcadeButtonSpec({
+    kind: "mode",
+    labelText: "しんけん",
+    modeTone: "serious",
+    selected: true,
+  });
+  const inactiveSpec = buildArcadeButtonSpec({
+    kind: "mode",
+    labelText: "しんけん",
+    modeTone: "serious",
+    selected: false,
+  });
+
+  assert.equal(normalSpec.label.text, "ふつう");
+  assert.equal(normalSpec.size.width < 280, true);
+  assert.equal(normalSpec.shape.body.radius, 24);
+  assert.equal(normalSpec.colors.accentColor, "#67E8F9");
+  assert.equal(seriousSpec.colors.accentColor, "#FB7185");
+  assert.notEqual(inactiveSpec.colors.coreFill, seriousSpec.colors.coreFill);
+});

@@ -22,6 +22,11 @@ export const NEON_THEME = Object.freeze({
   }),
 });
 
+export const GAME_MODES = Object.freeze({
+  normal: "normal",
+  serious: "serious",
+});
+
 const OVERLAY_COPY = Object.freeze({
   idle: Object.freeze({
     headline: "じゅんびちゅう...",
@@ -51,6 +56,21 @@ const MENU_COPY = Object.freeze({
   homeLabel: "おうちへ",
 });
 
+const GAME_MODE_COPY = Object.freeze({
+  [GAME_MODES.normal]: Object.freeze({
+    key: GAME_MODES.normal,
+    label: "ふつう",
+    title: "ふつうモード",
+    description: "ミスでも げんてん なし",
+  }),
+  [GAME_MODES.serious]: Object.freeze({
+    key: GAME_MODES.serious,
+    label: "しんけん",
+    title: "しんけんモード",
+    description: "ミスや みのがしで げんてん",
+  }),
+});
+
 export function getTimeStyle(remainingSec) {
   const isUrgent = remainingSec <= NEON_THEME.layout.dangerThresholdSec;
   return {
@@ -68,6 +88,10 @@ export function getPauseMenuCopy(soundEnabled) {
     ...MENU_COPY,
     soundLabel: soundEnabled ? "おと: あり" : "おと: なし",
   };
+}
+
+export function getGameModeCopy(mode) {
+  return GAME_MODE_COPY[mode] ?? GAME_MODE_COPY[GAME_MODES.normal];
 }
 
 export function formatBreachLevel(score) {

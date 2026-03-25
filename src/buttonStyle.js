@@ -56,6 +56,35 @@ const PAUSE_SHAPE = Object.freeze({
   }),
 });
 
+const MODE_SIZE = Object.freeze({
+  width: 220,
+  height: 76,
+});
+
+const MODE_SHAPE = Object.freeze({
+  body: Object.freeze({
+    x: -86,
+    y: -24,
+    width: 172,
+    height: 48,
+    radius: 24,
+  }),
+  innerBody: Object.freeze({
+    x: -80,
+    y: -18,
+    width: 160,
+    height: 40,
+    radius: 20,
+  }),
+  accentBar: Object.freeze({
+    x: -28,
+    y: 10,
+    width: 56,
+    height: 5,
+    radius: 2.5,
+  }),
+});
+
 const KIND_CONFIG = Object.freeze({
   start: Object.freeze({
     defaultLabel: "スタート",
@@ -104,15 +133,77 @@ const KIND_CONFIG = Object.freeze({
   }),
 });
 
+function buildModeConfig(modeTone = "normal", selected = false) {
+  const isSerious = modeTone === "serious";
+  const activeColors = isSerious
+    ? {
+        shellFill: "#3F1022",
+        coreFill: "#190B16",
+        accentColor: "#FB7185",
+        glowColor: "#FB7185",
+        outlineColor: "#FDA4AF",
+      }
+    : {
+        shellFill: "#082F49",
+        coreFill: "#0F172A",
+        accentColor: "#67E8F9",
+        glowColor: "#22D3EE",
+        outlineColor: "#7DD3FC",
+      };
+  const idleColors = isSerious
+    ? {
+        shellFill: "#27111E",
+        coreFill: "#140A12",
+        accentColor: "#9F1239",
+        glowColor: "#BE185D",
+        outlineColor: "#FDA4AF",
+      }
+    : {
+        shellFill: "#11243A",
+        coreFill: "#0B1226",
+        accentColor: "#155E75",
+        glowColor: "#0891B2",
+        outlineColor: "#7DD3FC",
+      };
+  const colors = selected ? activeColors : idleColors;
+
+  return Object.freeze({
+    defaultLabel: isSerious ? "しんけん" : "ふつう",
+    ...colors,
+    size: MODE_SIZE,
+    shape: MODE_SHAPE,
+    hitArea: Object.freeze({
+      width: 188,
+      height: 72,
+    }),
+    label: Object.freeze({
+      fontSize: 20,
+      letterSpacing: 2,
+      offsetX: 0,
+      offsetY: -2,
+      glowBlur: selected ? 10 : 6,
+    }),
+  });
+}
+
 export function hexToNumber(hex) {
   return Number.parseInt(hex.replace("#", ""), 16);
 }
 
-export function buildArcadeButtonSpec({ kind, labelText, soundEnabled = false }) {
-  const resolvedKind = kind === "sound"
-    ? (soundEnabled ? "soundOn" : "soundOff")
-    : (kind === "pause" ? "pause" : "start");
-  const config = KIND_CONFIG[resolvedKind];
+export function buildArcadeButtonSpec({
+  kind,
+  labelText,
+  soundEnabled = false,
+  selected = false,
+  modeTone = "normal",
+}) {
+  const config = kind === "mode"
+    ? buildModeConfig(modeTone, selected)
+    : KIND_CONFIG[
+      kind === "sound"
+        ? (soundEnabled ? "soundOn" : "soundOff")
+        : (kind === "pause" ? "pause" : "start")
+    ];
   const size = config.size ?? CAPSULE_SIZE;
   const shape = config.shape ?? CAPSULE_SHAPE;
   const hitArea = config.hitArea ?? size;

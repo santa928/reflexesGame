@@ -1,5 +1,15 @@
 Original prompt: どうぶつテーマ化と段階難化の改善プランを実装し、Tier3以降は「2匹出る / 1匹押したらその1匹だけ消えて +1 / もう1匹は残る」仕様にする。
 
+2026-03-26
+- `docs/plans/2026-03-26-serious-mode-design.md` と `docs/plans/2026-03-26-serious-mode-implementation.md` を追加し、`しんけんモード` の要件・受け入れ条件・実装手順を記録した。
+- `src/themeStyle.js` に `normal / serious` のモード定義と説明文 helper を追加し、`src/buttonStyle.js` にモード選択ボタンの selected/unselected spec を追加した。
+- `src/main.js` にホーム画面の `ふつう / しんけん` 切替、`selectedMode` 状態、`しんけん` 時の誤タップ/見逃し減点、スコア下限 `0` を実装した。
+- `tests/theme-style.test.mjs` / `tests/button-style.test.mjs` / `tests/ui-flow.test.mjs` を更新し、モード copy・ボタン spec・scene state の RED -> GREEN を確認した。
+- Gemini 相談は `run_gemini.sh` 実行まではできたが、`gemini-3.1-pro-preview` 側で `429 MODEL_CAPACITY_EXHAUSTED` が返り取得できなかったため、失敗証跡を残して手動設計へ切り替えた。
+- Docker 上で `node --test tests/*.test.mjs && node --check src/main.js` を実行し、25件すべて通過することを確認した。
+- Docker 配信 + Playwright で `390x844` / `768x1024` のホーム・プレイ画面を確認し、成果物を `tmp/ui-check/serious-home-390x844.png`、`tmp/ui-check/serious-play-390x844.png`、`tmp/ui-check/serious-home-768x1024.png`、`tmp/ui-check/serious-play-768x1024.png` に保存した。
+- Playwright の scene state 確認で、`ふつう` の誤タップは `score: 2 -> 2`、`しんけん` の誤タップは `2 -> 1`、`しんけん` の見逃しは `2 -> 1` になることを確認した。
+
 2026-03-07
 - `src/main.js` をどうぶつテーマの Phaser 実装へ更新中。
 - Tier1-4 の段階難化、レベル表示、レベルアップバナー、2匹表示ロジックを追加。
