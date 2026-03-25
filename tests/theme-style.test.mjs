@@ -5,6 +5,8 @@ import {
   GAME_MODES,
   NEON_THEME,
   computeBottomControlLayout,
+  computeHudLayout,
+  computePauseMenuLayout,
   computeTopRightControlLayout,
   formatBreachLevel,
   formatUptime,
@@ -127,4 +129,51 @@ test("top-right pause control keeps a safe tap zone on mobile portrait", () => {
   assert.equal(layout.buttonScale > 0.5, true);
   assert.equal(layout.hitAreaWidth >= 60, true);
   assert.equal(layout.hitAreaHeight >= 60, true);
+});
+
+test("hud layout keeps the level badge inside the panel on mobile portrait", () => {
+  const layout = computeHudLayout({
+    width: 390,
+    topY: 24,
+    scoreHeight: 52,
+    timeHeight: 30,
+    badgeHeight: 44,
+  });
+
+  assert.equal(layout.cardHeight >= layout.requiredHeight, true);
+  assert.equal(layout.badgeBottom <= layout.cardBottom - layout.bottomPadding, true);
+  assert.equal(layout.cardHeight > 170, true);
+});
+
+test("pause menu layout keeps all three buttons inside the card on mobile portrait", () => {
+  const layout = computePauseMenuLayout({
+    width: 390,
+    height: 844,
+    columnWidth: 358,
+    boardTop: 270,
+    boardSize: 358,
+    buttonBaseWidth: 280,
+    buttonBaseHeight: 88,
+  });
+
+  assert.equal(layout.cardHeight >= layout.requiredHeight, true);
+  assert.equal(layout.homeButtonBottom <= layout.cardBottom - layout.bottomPadding, true);
+  assert.equal(layout.buttonScale <= 1, true);
+  assert.equal(layout.cardTop >= layout.safeTop, true);
+});
+
+test("pause menu layout stays fully inside the viewport on tablet portrait", () => {
+  const layout = computePauseMenuLayout({
+    width: 768,
+    height: 1024,
+    columnWidth: 600,
+    boardTop: 276,
+    boardSize: 512,
+    buttonBaseWidth: 280,
+    buttonBaseHeight: 88,
+  });
+
+  assert.equal(layout.cardTop >= layout.safeTop, true);
+  assert.equal(layout.cardBottom <= 1024 - layout.safeBottom, true);
+  assert.equal(layout.homeButtonBottom <= layout.cardBottom - layout.bottomPadding, true);
 });

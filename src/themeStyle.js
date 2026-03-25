@@ -102,6 +102,118 @@ export function formatUptime(remainingMs) {
   return `じかん ${(Math.max(0, remainingMs) / 1000).toFixed(1)}びょう`;
 }
 
+/**
+ * Compute the HUD panel height from the live text and badge metrics so the badge
+ * never crosses the panel border on narrow portrait screens.
+ */
+export function computeHudLayout({
+  width,
+  topY,
+  scoreHeight,
+  timeHeight,
+  badgeHeight,
+}) {
+  const isMobilePortrait = width < 480;
+  const topPadding = isMobilePortrait ? 26 : 30;
+  const bottomPadding = isMobilePortrait ? 24 : 28;
+  const scoreGap = isMobilePortrait ? 8 : 10;
+  const badgeGap = isMobilePortrait ? 14 : 16;
+  const requiredHeight = topPadding + scoreHeight + scoreGap + timeHeight + badgeGap + badgeHeight + bottomPadding;
+  const cardHeight = Math.max(170, Math.ceil(requiredHeight));
+  const scoreY = topY + topPadding + scoreHeight * 0.5;
+  const timeY = scoreY + scoreHeight * 0.5 + scoreGap + timeHeight * 0.5;
+  const badgeY = timeY + timeHeight * 0.5 + badgeGap + badgeHeight * 0.5;
+
+  return {
+    topPadding,
+    bottomPadding,
+    scoreGap,
+    badgeGap,
+    requiredHeight,
+    cardHeight,
+    cardTop: topY,
+    cardBottom: topY + cardHeight,
+    scoreY,
+    timeY,
+    badgeY,
+    badgeBottom: badgeY + badgeHeight * 0.5,
+  };
+}
+
+/**
+ * Compute a pause menu card that fits its title and three buttons inside the
+ * visible viewport, instead of relying on fixed card heights and guessed gaps.
+ */
+export function computePauseMenuLayout({
+  width,
+  height,
+  columnWidth,
+  boardTop,
+  boardSize,
+  buttonBaseWidth,
+  buttonBaseHeight,
+  titleHeight = width < 480 ? 34 : 38,
+}) {
+  const isMobilePortrait = width < 480;
+  const cardWidth = Math.min(columnWidth * 0.98, 420);
+  const safeTop = isMobilePortrait ? 28 : 36;
+  const safeBottom = isMobilePortrait ? 28 : 40;
+  const sidePadding = isMobilePortrait ? 26 : 32;
+  const topPadding = isMobilePortrait ? 34 : 38;
+  const bottomPadding = isMobilePortrait ? 28 : 34;
+  const titleGap = isMobilePortrait ? 24 : 28;
+  const buttonGap = isMobilePortrait ? 18 : 22;
+  const rawScale = Math.min(Math.max(columnWidth / 400, 0.72), 1);
+  const maxScaleByWidth = (cardWidth - sidePadding * 2) / buttonBaseWidth;
+  const availableCardHeight = height - safeTop - safeBottom;
+  const chromeHeight = topPadding + titleHeight + titleGap + bottomPadding + buttonGap * 2;
+  const maxScaleByHeight = (availableCardHeight - chromeHeight) / (buttonBaseHeight * 3);
+  const unclampedScale = Math.min(rawScale, maxScaleByWidth, 1);
+  const buttonScale = Math.max(0.56, Math.min(unclampedScale, maxScaleByHeight));
+  const buttonHeight = buttonBaseHeight * buttonScale;
+  const requiredHeight = Math.ceil(
+    topPadding
+      + titleHeight
+      + titleGap
+      + buttonHeight * 3
+      + buttonGap * 2
+      + bottomPadding,
+  );
+  const cardHeight = Math.max(280, requiredHeight);
+  const preferredCenterY = Math.max(boardTop + boardSize * 0.5, Math.round(height * 0.47));
+  const minCenterY = safeTop + cardHeight * 0.5;
+  const maxCenterY = height - safeBottom - cardHeight * 0.5;
+  const centerY = Math.min(Math.max(preferredCenterY, minCenterY), maxCenterY);
+  const cardTop = centerY - cardHeight * 0.5;
+  const cardBottom = centerY + cardHeight * 0.5;
+  const titleOffsetY = -cardHeight * 0.5 + topPadding + titleHeight * 0.5;
+  const continueOffsetY = titleOffsetY + titleHeight * 0.5 + titleGap + buttonHeight * 0.5;
+  const soundOffsetY = continueOffsetY + buttonHeight + buttonGap;
+  const homeOffsetY = soundOffsetY + buttonHeight + buttonGap;
+
+  return {
+    safeTop,
+    safeBottom,
+    cardWidth,
+    cardHeight,
+    requiredHeight,
+    centerY,
+    cardTop,
+    cardBottom,
+    topPadding,
+    bottomPadding,
+    titleGap,
+    buttonGap,
+    buttonScale,
+    buttonHeight,
+    titleOffsetY,
+    continueOffsetY,
+    soundOffsetY,
+    homeOffsetY,
+    homeButtonBottom: centerY + homeOffsetY + buttonHeight * 0.5,
+  };
+}
+
 export function computeBottomControlLayout({
   width,
   height,

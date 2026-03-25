@@ -1,6 +1,14 @@
 Original prompt: どうぶつテーマ化と段階難化の改善プランを実装し、Tier3以降は「2匹出る / 1匹押したらその1匹だけ消えて +1 / もう1匹は残る」仕様にする。
 
 2026-03-26
+- `docs/plans/2026-03-26-menu-bounds-design.md` と `docs/plans/2026-03-26-menu-bounds-implementation.md` を追加し、HUD バッジとポーズメニューの枠内収まり条件を要件・手順として明文化した。
+- `src/themeStyle.js` に `computeHudLayout()` と `computePauseMenuLayout()` を追加し、カード内要素の実寸から `cardHeight / buttonScale / centerY` を逆算するようにした。
+- `src/main.js` は固定 `170px` HUD / 固定 `280px` メニュー前提をやめ、helper から返す高さ・配置を使って HUD とポーズメニューを再レイアウトするよう更新した。
+- `tests/theme-style.test.mjs` に HUD バッジ下端とポーズメニュー最下段ボタンがカード内に収まる RED -> GREEN テストを追加した。
+- Gemini 相談は既定 preview が `429 MODEL_CAPACITY_EXHAUSTED` で取得できず、stable Pro 指定も今回のターンでは設計回答を返さなかったため、失敗証跡を残したうえで Codex 側の最小差分設計へ切り替えた。
+- Docker 上で `node --test tests/*.test.mjs && node --check src/main.js` を実行し、28件すべて通過することを確認した。
+- Docker 配信 + Playwright で service worker / cache を明示的に削除してから `390x844` と `768x1024` を再確認し、成果物を `tmp/ui-check/menu-bounds-390-playing.png`、`tmp/ui-check/menu-bounds-390-menu.png`、`tmp/ui-check/menu-bounds-768-playing.png`、`tmp/ui-check/menu-bounds-768-menu.png` に保存した。
+- Playwright の数値確認では、`390x844` で `menuCard.bottom=643.6` に対して `menuHomeButton.bottom=614.85`、`hud cardBottom=212` に対して `badgeBottom=187.27`、`768x1024` で `menuCard.bottom=767.34` に対して `menuHomeButton.bottom=732.56`、`hud cardBottom=266.672` に対して `badgeBottom=237.92` となり、両 viewport で枠内に収まることを確認した。
 - `docs/plans/2026-03-26-serious-mode-design.md` と `docs/plans/2026-03-26-serious-mode-implementation.md` を追加し、`しんけんモード` の要件・受け入れ条件・実装手順を記録した。
 - `src/themeStyle.js` に `normal / serious` のモード定義と説明文 helper を追加し、`src/buttonStyle.js` にモード選択ボタンの selected/unselected spec を追加した。
 - `src/main.js` にホーム画面の `ふつう / しんけん` 切替、`selectedMode` 状態、`しんけん` 時の誤タップ/見逃し減点、スコア下限 `0` を実装した。

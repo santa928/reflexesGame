@@ -2,6 +2,8 @@ import { buildArcadeButtonSpec, hexToNumber } from "./buttonStyle.js";
 import {
   GAME_MODES,
   NEON_THEME,
+  computeHudLayout,
+  computePauseMenuLayout,
   computeTopRightControlLayout,
   formatBreachLevel,
   formatUptime,
@@ -1401,8 +1403,6 @@ class GameScene extends Phaser.Scene {
     const hudWidth = Math.min(columnWidth, w - 26);
     const hudX = w * 0.5;
     const hudTop = Math.max(18, h * 0.028);
-    this.drawHud(hudX, hudTop, hudWidth);
-
     const scoreFontSize = Phaser.Math.Clamp(Math.round(w * 0.09), 36, 52);
     const timeFontSize = Phaser.Math.Clamp(Math.round(w * 0.05), 24, 32);
     const statusFontSize = Phaser.Math.Clamp(Math.round(w * 0.042), 20, 28);
@@ -1412,7 +1412,6 @@ class GameScene extends Phaser.Scene {
     const overlayCardWidth = Math.min(columnWidth * 0.96, 420);
     const levelBannerWidth = Math.min(columnWidth * 0.92, 440);
     const ctaScale = Phaser.Math.Clamp(columnWidth / 380, 0.74, 1);
-    const menuScale = Phaser.Math.Clamp(columnWidth / 400, 0.72, 1);
     this.scoreText.setFontSize(scoreFontSize);
     this.timeText.setFontSize(timeFontSize);
     this.statusText.setFontSize(statusFontSize);
@@ -1427,14 +1426,21 @@ class GameScene extends Phaser.Scene {
     this.homeModeHint.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.036), 14, 18));
     this.levelBannerBackground.setSize(levelBannerWidth, 102);
     this.levelBannerText.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.045), 24, 30));
-    this.menuCardBackground.setSize(Math.min(columnWidth * 0.98, 420), 280);
     this.menuTitle.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.05), 24, 30));
     this.levelBadge.setScale(badgeScale);
 
-    this.scoreText.setPosition(hudX, hudTop + 16);
-    this.timeText.setPosition(hudX, this.scoreText.y + this.scoreText.height + 6);
-    this.levelBadge.setPosition(hudX, this.timeText.y + this.timeText.height + 30);
-    this.statusText.setPosition(hudX, this.levelBadge.y + 30, 0);
+    const hudLayout = computeHudLayout({
+      width: w,
+      topY: hudTop,
+      scoreHeight: this.scoreText.height,
+      timeHeight: this.timeText.height,
+      badgeHeight: this.levelBadgeBackground.height * badgeScale,
+    });
+    this.drawHud(hudX, hudTop, hudWidth, hudLayout.cardHeight);
+    this.scoreText.setPosition(hudX, hudLayout.scoreY);
+    this.timeText.setPosition(hudX, hudLayout.timeY);
+    this.levelBadge.setPosition(hudX, hudLayout.badgeY);
+    this.statusText.setPosition(hudX, hudLayout.cardBottom + 26, 0);
     this.levelBanner.setPosition(hudX, boardTop + boardSize * 0.44);
     this.overlayContainer.setPosition(hudX, boardTop + boardSize * 0.5);
     this.setButtonBaseScale(this.homePlayButton, ctaScale);
@@ -1461,15 +1467,25 @@ class GameScene extends Phaser.Scene {
     this.setButtonBaseScale(this.pauseButton, pauseLayout.buttonScale);
     this.setButtonPosition(this.pauseButton, pauseLayout.x, pauseLayout.y);
 
-    const menuCenterY = Math.max(boardTop + boardSize * 0.5, Math.round(h * 0.47));
-    const menuGap = 84 * menuScale;
-    this.menuCard.setPosition(hudX, menuCenterY);
-    this.setButtonBaseScale(this.menuContinueButton, menuScale);
-    this.setButtonBaseScale(this.menuSoundButton, menuScale);
-    this.setButtonBaseScale(this.menuHomeButton, menuScale);
-    this.setButtonPosition(this.menuContinueButton, hudX, menuCenterY - menuGap * 0.18);
-    this.setButtonPosition(this.menuSoundButton, hudX, menuCenterY + menuGap * 0.72);
-    this.setButtonPosition(this.menuHomeButton, hudX, menuCenterY + menuGap * 1.62);
+    const menuLayout = computePauseMenuLayout({
+      width: w,
+      height: h,
+      columnWidth,
+      boardTop,
+      boardSize,
+      buttonBaseWidth: this.menuContinueButton.baseWidth,
+      buttonBaseHeight: this.menuContinueButton.baseHeight,
+      titleHeight: this.menuTitle.height,
+    });
+    this.menuCardBackground.setSize(menuLayout.cardWidth, menuLayout.cardHeight);
+    this.menuTitle.setPosition(0, menuLayout.titleOffsetY);
+    this.menuCard.setPosition(hudX, menuLayout.centerY);
+    this.setButtonBaseScale(this.menuContinueButton, menuLayout.buttonScale);
+    this.setButtonBaseScale(this.menuSoundButton, menuLayout.buttonScale);
+    this.setButtonBaseScale(this.menuHomeButton, menuLayout.buttonScale);
+    this.setButtonPosition(this.menuContinueButton, hudX, menuLayout.centerY + menuLayout.continueOffsetY);
+    this.setButtonPosition(this.menuSoundButton, hudX, menuLayout.centerY + menuLayout.soundOffsetY);
+    this.setButtonPosition(this.menuHomeButton, hudX, menuLayout.centerY + menuLayout.homeOffsetY);
 
     const boardMetrics = this.drawBoard(boardLeft, boardTop, boardSize);
     for (let row = 0; row < GAME_CONFIG.gridSize; row += 1) {
@@ -1525,12 +1541,12 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  drawHud(centerX, topY, width) {
+  drawHud(centerX, topY, width, height) {
     this.hudGraphics.clear();
     this.hudGraphics.fillStyle(hexToNumber(NEON_THEME.palette.panel), 0.82);
-    this.hudGraphics.fillRoundedRect(centerX - width * 0.5, topY, width, 170, 28);
+    this.hudGraphics.fillRoundedRect(centerX - width * 0.5, topY, width, height, 28);
     this.hudGraphics.lineStyle(2, hexToNumber(NEON_THEME.palette.gridGlow), 0.42);
-    this.hudGraphics.strokeRoundedRect(centerX - width * 0.5, topY, width, 170, 28);
+    this.hudGraphics.strokeRoundedRect(centerX - width * 0.5, topY, width, height, 28);
   }
 
   drawBoard(boardLeft, boardTop, boardSize) {
