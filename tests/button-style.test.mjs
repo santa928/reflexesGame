@@ -39,3 +39,17 @@ test("hover and press motion stays fast and arcade-like", () => {
   assert.equal(spec.label.offsetY, -4);
   assert.equal(spec.interaction.glowAlpha, 0.6);
 });
+
+test("pause button uses a compact square body with a larger hit area", () => {
+  const spec = buildArcadeButtonSpec({ kind: "pause", soundEnabled: false });
+
+  assert.equal(spec.label.text, "II");
+  assert.equal(spec.size.width, 96);
+  assert.equal(spec.size.height, 96);
+  assert.equal(spec.hitArea.width >= 60, true);
+  assert.equal(spec.hitArea.height >= 60, true);
+  assert.equal(spec.shape.body.width, 68);
+  assert.equal(spec.shape.body.height, 68);
+  assert.equal(spec.shape.body.radius, 24);
+  assert.equal(spec.colors.accentColor, "#67E8F9");
+});

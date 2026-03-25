@@ -1,10 +1,11 @@
 import { buildArcadeButtonSpec, hexToNumber } from "./buttonStyle.js";
 import {
   NEON_THEME,
-  computeBottomControlLayout,
+  computeTopRightControlLayout,
   formatBreachLevel,
   formatUptime,
   getOverlayCopy,
+  getPauseMenuCopy,
   getTimeStyle,
 } from "./themeStyle.js";
 import {
@@ -138,7 +139,9 @@ class GameScene extends Phaser.Scene {
     this.lastSpawnCellIndices = [];
     this.nodeVariantPool = NODE_VARIANTS.map((variant) => variant.id);
     this.lastUrgentSecond = null;
-    this.overlayMode = "idle";
+    this.screenMode = "home";
+    this.isMenuOpen = false;
+    this.wasRunningBeforeMenu = false;
     this.decorations = {
       ambientOrbs: [],
       stars: [],
@@ -151,11 +154,12 @@ class GameScene extends Phaser.Scene {
     this.createUi();
     this.createGrid();
     this.layout(this.scale.width, this.scale.height);
-    this.updateOverlayState("idle");
+    this.goHome();
     this.scale.on("resize", this.onResize, this);
   }
 
   setupState() {
+    const preservedAudioEnabled = this.audioEnabled;
     this.score = 0;
     this.tier = 1;
     this.currentTierConfig = this.getTierConfig(1);
@@ -165,12 +169,14 @@ class GameScene extends Phaser.Scene {
     this.isRunning = false;
     this.spawnTimers = [];
     this.spawnReservationCount = 0;
-    this.audioEnabled = AUDIO_CONFIG.enabledByDefault;
+    this.audioEnabled = preservedAudioEnabled;
     this.activeTargets = [];
     this.lastSpawnCellIndices = [];
     this.nodeVariantPool = NODE_VARIANTS.map((variant) => variant.id);
     this.lastUrgentSecond = null;
-    this.overlayMode = "idle";
+    this.screenMode = "home";
+    this.isMenuOpen = false;
+    this.wasRunningBeforeMenu = false;
   }
 
   createBackdrop() {
@@ -260,16 +266,47 @@ class GameScene extends Phaser.Scene {
       .setDepth(50);
     this.levelBannerTween = null;
 
+    this.homeCardBackground = this.add.rectangle(0, 0, 340, 190, 0x081121, 0.78)
+      .setStrokeStyle(3, hexToNumber(NEON_THEME.palette.gridGlow), 0.9);
+    this.homeHeadline = this.add.text(0, -34, "ぴかぴかタッチ", {
+      fontFamily: UI_FONT_STACK,
+      fontSize: "34px",
+      color: "#f8fafc",
+      fontStyle: "700",
+    }).setOrigin(0.5);
+    this.homeHeadline.setShadow(0, 0, "#22d3ee", 16, false, true);
+    this.homeSubline = this.add.text(0, 34, "ひかったら タッチ!", {
+      fontFamily: UI_FONT_STACK,
+      fontSize: "18px",
+      color: "#bae6fd",
+      fontStyle: "700",
+      align: "center",
+    }).setOrigin(0.5);
+    this.homeContainer = this.add.container(0, 0, [
+      this.homeCardBackground,
+      this.homeHeadline,
+      this.homeSubline,
+    ]).setDepth(45);
+    this.homePulseTween = this.tweens.add({
+      targets: this.homeContainer,
+      scaleX: 1.03,
+      scaleY: 1.03,
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+
     this.overlayCardBackground = this.add.rectangle(0, 0, 320, 170, 0x081121, 0.76)
       .setStrokeStyle(3, hexToNumber(NEON_THEME.palette.gridGlow), 0.9);
-    this.overlayHeadline = this.add.text(0, -28, "じゅんびちゅう...", {
+    this.overlayHeadline = this.add.text(0, -28, "おしまい!", {
       fontFamily: UI_FONT_STACK,
       fontSize: "34px",
       color: "#f8fafc",
       fontStyle: "700",
     }).setOrigin(0.5);
     this.overlayHeadline.setShadow(0, 0, "#22d3ee", 16, false, true);
-    this.overlaySubline = this.add.text(0, 34, "スタートを おしてね", {
+    this.overlaySubline = this.add.text(0, 34, "きみの てんすう", {
       fontFamily: UI_FONT_STACK,
       fontSize: "18px",
       color: "#bae6fd",
@@ -281,26 +318,67 @@ class GameScene extends Phaser.Scene {
       this.overlayHeadline,
       this.overlaySubline,
     ]).setDepth(45);
-    this.overlayPulseTween = this.tweens.add({
-      targets: this.overlayContainer,
-      scaleX: 1.03,
-      scaleY: 1.03,
-      duration: 900,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-    });
 
-    this.startButton = this.createButton({
+    this.homePlayButton = this.createButton({
       kind: "start",
-      label: "スタート",
+      label: "あそぶ！",
       onPress: () => this.startGame(),
+      depth: 46,
     });
 
-    this.soundButton = this.createButton({
+    this.restartButton = this.createButton({
+      kind: "start",
+      label: "もういちど",
+      onPress: () => this.startGame(),
+      depth: 46,
+    });
+
+    this.pauseButton = this.createButton({
+      kind: "pause",
+      label: "II",
+      onPress: () => this.openPauseMenu(),
+      depth: 48,
+    });
+
+    this.menuDimmer = this.add.rectangle(0, 0, 10, 10, 0x000000, 0.72)
+      .setOrigin(0)
+      .setDepth(52)
+      .setVisible(false)
+      .setInteractive({ useHandCursor: false });
+    this.menuDimmer.on("pointerdown", () => this.resumeGame());
+
+    this.menuCardBackground = this.add.rectangle(0, 0, 340, 280, 0x081121, 0.9)
+      .setStrokeStyle(3, hexToNumber(NEON_THEME.palette.gridGlow), 0.94);
+    this.menuTitle = this.add.text(0, -92, "メニュー", {
+      fontFamily: UI_FONT_STACK,
+      fontSize: "28px",
+      color: "#f8fafc",
+      fontStyle: "700",
+    }).setOrigin(0.5);
+    this.menuTitle.setShadow(0, 0, "#22d3ee", 12, false, true);
+    this.menuCard = this.add.container(0, 0, [this.menuCardBackground, this.menuTitle])
+      .setDepth(54)
+      .setVisible(false);
+
+    this.menuContinueButton = this.createButton({
+      kind: "start",
+      label: "つづける",
+      onPress: () => this.resumeGame(),
+      depth: 55,
+    });
+
+    this.menuSoundButton = this.createButton({
       kind: "sound",
       label: this.getSoundLabel(),
       onPress: () => this.toggleSound(),
+      depth: 55,
+    });
+
+    this.menuHomeButton = this.createButton({
+      kind: "start",
+      label: "おうちへ",
+      onPress: () => this.goHome(),
+      depth: 55,
     });
   }
 
@@ -314,7 +392,7 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  createButton({ kind, label, onPress }) {
+  createButton({ kind, label, onPress, depth = 20 }) {
     const spec = buildArcadeButtonSpec({
       kind,
       labelText: label,
@@ -335,9 +413,9 @@ class GameScene extends Phaser.Scene {
       .setPosition(spec.label.offsetX ?? 0, spec.label.offsetY ?? 0)
       .setShadow(0, 0, spec.colors.glowColor, spec.label.glowBlur ?? 10, false, true);
     const frontLayer = this.add.container(0, 0, [core, accent, labelNode]);
-    const hitArea = this.add.rectangle(0, 0, spec.size.width, spec.size.height, 0xffffff, 0.001)
+    const hitArea = this.add.rectangle(0, 0, spec.hitArea.width, spec.hitArea.height, 0xffffff, 0.001)
       .setInteractive({ useHandCursor: true });
-    const container = this.add.container(0, 0, [glow, shell, frontLayer, hitArea]).setDepth(20);
+    const container = this.add.container(0, 0, [glow, shell, frontLayer, hitArea]).setDepth(depth);
     container.setSize(spec.size.width, spec.size.height);
 
     const button = {
@@ -420,6 +498,13 @@ class GameScene extends Phaser.Scene {
     this.refreshButtonRestingState(button);
   }
 
+  setButtonVisible(button, visible) {
+    button.container.setVisible(visible);
+    if (button.hitArea.input) {
+      button.hitArea.input.enabled = visible;
+    }
+  }
+
   setButtonPosition(button, x, y) {
     button.homePosition.x = x;
     button.homePosition.y = y;
@@ -473,10 +558,156 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  updateHomeCopy() {
+    const copy = getOverlayCopy("home");
+    this.homeHeadline.setText(copy.headline);
+    this.homeSubline.setText(copy.subline);
+    this.updateButtonVisual(this.homePlayButton, copy.cta);
+  }
+
+  updateFinishedCopy() {
+    const copy = getOverlayCopy("finished");
+    this.overlayHeadline.setText(copy.headline);
+    this.overlaySubline.setText(`${copy.subline}: ${String(this.score).padStart(2, "0")}`);
+    this.updateButtonVisual(this.restartButton, copy.cta);
+  }
+
+  refreshMenuCopy() {
+    const copy = getPauseMenuCopy(this.audioEnabled);
+    this.menuTitle.setText(copy.title);
+    this.updateButtonVisual(this.menuContinueButton, copy.continueLabel);
+    this.updateButtonVisual(this.menuSoundButton, copy.soundLabel);
+    this.updateButtonVisual(this.menuHomeButton, copy.homeLabel);
+  }
+
+  pauseGameplayRuntime() {
+    this.remainingTimeMs = Math.max(0, this.countdownEndAt - this.time.now);
+    this.spawnTimers.forEach((timer) => {
+      timer.paused = true;
+    });
+    if (this.gameTimer) {
+      this.gameTimer.paused = true;
+    }
+    if (this.countdownTickTimer) {
+      this.countdownTickTimer.paused = true;
+    }
+    this.activeTargets.forEach((target) => {
+      if (target.expireTimer) {
+        target.expireTimer.paused = true;
+      }
+    });
+  }
+
+  resumeGameplayRuntime() {
+    this.countdownEndAt = this.time.now + this.remainingTimeMs;
+    this.spawnTimers.forEach((timer) => {
+      timer.paused = false;
+    });
+    if (this.gameTimer) {
+      this.gameTimer.paused = false;
+    }
+    if (this.countdownTickTimer) {
+      this.countdownTickTimer.paused = false;
+    }
+    this.activeTargets.forEach((target) => {
+      if (target.expireTimer) {
+        target.expireTimer.paused = false;
+      }
+    });
+  }
+
+  getSnapshotMode() {
+    if (this.isMenuOpen && this.screenMode === "playing") {
+      return "paused";
+    }
+    return this.screenMode;
+  }
+
+  refreshScreenUi() {
+    const isHome = this.screenMode === "home";
+    const isFinished = this.screenMode === "finished";
+    const showGameChrome = !isHome;
+    const showMenu = this.isMenuOpen;
+
+    this.hudGraphics.setVisible(showGameChrome);
+    this.scoreText.setVisible(showGameChrome);
+    this.timeText.setVisible(showGameChrome);
+    this.levelBadge.setVisible(showGameChrome);
+    this.statusText.setVisible(showGameChrome);
+    this.boardGraphics.setVisible(showGameChrome);
+    this.dangerOverlay.setVisible(showGameChrome);
+
+    this.homeContainer.setVisible(isHome);
+    this.setButtonVisible(this.homePlayButton, isHome);
+
+    this.updateFinishedCopy();
+    this.overlayContainer.setVisible(isFinished && !showMenu);
+    this.setButtonVisible(this.restartButton, isFinished && !showMenu);
+
+    this.setButtonVisible(this.pauseButton, showGameChrome && !showMenu);
+
+    this.menuDimmer.setVisible(showMenu);
+    if (this.menuDimmer.input) {
+      this.menuDimmer.input.enabled = showMenu;
+    }
+    this.menuCard.setVisible(showMenu);
+    this.setButtonVisible(this.menuContinueButton, showMenu);
+    this.setButtonVisible(this.menuSoundButton, showMenu);
+    this.setButtonVisible(this.menuHomeButton, showMenu);
+
+    this.cellZones.forEach((zone) => {
+      if (zone.input) {
+        zone.input.enabled = showGameChrome && !showMenu && this.isRunning;
+      }
+    });
+  }
+
+  openPauseMenu() {
+    if (this.screenMode === "home" || this.isMenuOpen) {
+      return;
+    }
+    this.wasRunningBeforeMenu = this.screenMode === "playing" && this.isRunning;
+    if (this.wasRunningBeforeMenu) {
+      this.pauseGameplayRuntime();
+    }
+    this.isMenuOpen = true;
+    this.refreshMenuCopy();
+    this.refreshScreenUi();
+  }
+
+  resumeGame() {
+    if (!this.isMenuOpen) {
+      return;
+    }
+    this.isMenuOpen = false;
+    if (this.wasRunningBeforeMenu) {
+      this.resumeGameplayRuntime();
+    }
+    this.wasRunningBeforeMenu = false;
+    this.refreshScreenUi();
+  }
+
+  goHome() {
+    this.resumeGame();
+    this.clearTimers();
+    this.clearActiveTargets(false);
+    this.setupState();
+    this.updateScoreText(false);
+    this.updateTimeText();
+    this.updateTierUi();
+    this.setStatusText(GAME_CONFIG.statusMessages.ready, "#bae6fd");
+    this.updateHomeCopy();
+    this.refreshMenuCopy();
+    this.refreshScreenUi();
+  }
+
   startGame() {
     this.clearTimers();
     this.clearActiveTargets(false);
+    this.isMenuOpen = false;
+    this.wasRunningBeforeMenu = false;
     this.isRunning = true;
+    this.screenMode = "playing";
     this.spawnReservationCount = 0;
     this.score = 0;
     this.tier = 1;
@@ -490,8 +721,8 @@ class GameScene extends Phaser.Scene {
     this.updateTimeText();
     this.updateTierUi();
     this.setStatusText("スタート!", NEON_THEME.palette.hud);
-    this.updateOverlayState("playing");
-    this.updateButtonVisual(this.startButton, "もういっかい");
+    this.refreshMenuCopy();
+    this.refreshScreenUi();
 
     this.gameTimer = this.time.delayedCall(GAME_CONFIG.gameDurationMs, () => this.finishGame());
     this.countdownTickTimer = this.time.addEvent({
@@ -731,7 +962,7 @@ class GameScene extends Phaser.Scene {
   }
 
   onCellPressed(cellIndex) {
-    if (!this.isRunning) {
+    if (!this.isRunning || this.isMenuOpen) {
       return;
     }
 
@@ -846,14 +1077,14 @@ class GameScene extends Phaser.Scene {
     }
 
     this.isRunning = false;
+    this.screenMode = "finished";
     this.remainingTimeMs = 0;
     this.updateTimeText();
     this.playCue("finish");
     this.clearTimers();
     this.clearActiveTargets(true);
     this.setStatusText(GAME_CONFIG.statusMessages.finish, NEON_THEME.palette.warning);
-    this.updateButtonVisual(this.startButton, "もういっかい");
-    this.updateOverlayState("finished");
+    this.refreshScreenUi();
   }
 
   playLevelUpFeedback() {
@@ -882,7 +1113,7 @@ class GameScene extends Phaser.Scene {
 
   toggleSound() {
     this.audioEnabled = !this.audioEnabled;
-    this.updateButtonVisual(this.soundButton, this.getSoundLabel());
+    this.refreshMenuCopy();
     if (this.audioEnabled) {
       this.playCue("toggle");
     }
@@ -1087,6 +1318,8 @@ class GameScene extends Phaser.Scene {
     const overlaySublineSize = Phaser.Math.Clamp(Math.round(w * 0.042), 16, 20);
     const overlayCardWidth = Math.min(columnWidth * 0.96, 420);
     const levelBannerWidth = Math.min(columnWidth * 0.92, 440);
+    const ctaScale = Phaser.Math.Clamp(columnWidth / 380, 0.74, 1);
+    const menuScale = Phaser.Math.Clamp(columnWidth / 400, 0.72, 1);
     this.scoreText.setFontSize(scoreFontSize);
     this.timeText.setFontSize(timeFontSize);
     this.statusText.setFontSize(statusFontSize);
@@ -1094,8 +1327,13 @@ class GameScene extends Phaser.Scene {
     this.overlayHeadline.setFontSize(overlayHeadlineSize);
     this.overlaySubline.setFontSize(overlaySublineSize);
     this.overlayCardBackground.setSize(overlayCardWidth, 152);
+    this.homeCardBackground.setSize(Math.min(columnWidth * 0.98, 430), 182);
+    this.homeHeadline.setFontSize(overlayHeadlineSize);
+    this.homeSubline.setFontSize(overlaySublineSize + 2);
     this.levelBannerBackground.setSize(levelBannerWidth, 102);
     this.levelBannerText.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.045), 24, 30));
+    this.menuCardBackground.setSize(Math.min(columnWidth * 0.98, 420), 280);
+    this.menuTitle.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.05), 24, 30));
     this.levelBadge.setScale(badgeScale);
 
     this.scoreText.setPosition(hudX, hudTop + 16);
@@ -1104,21 +1342,31 @@ class GameScene extends Phaser.Scene {
     this.statusText.setPosition(hudX, this.levelBadge.y + 30, 0);
     this.levelBanner.setPosition(hudX, boardTop + boardSize * 0.44);
     this.overlayContainer.setPosition(hudX, boardTop + boardSize * 0.5);
+    this.setButtonBaseScale(this.homePlayButton, ctaScale);
+    this.setButtonBaseScale(this.restartButton, ctaScale);
+    this.setButtonPosition(this.restartButton, hudX, this.overlayContainer.y + 128);
 
-    const buttonLayout = computeBottomControlLayout({
+    const homeCenterY = Math.max(290, Math.round(h * 0.42));
+    this.homeContainer.setPosition(hudX, homeCenterY);
+    this.setButtonPosition(this.homePlayButton, hudX, homeCenterY + 138);
+
+    const pauseLayout = computeTopRightControlLayout({
       width: w,
-      height: h,
-      columnWidth,
-      boardTop,
-      boardSize,
-      buttonBaseWidth: this.startButton.baseWidth,
-      buttonBaseHeight: this.startButton.baseHeight,
+      buttonBaseWidth: this.pauseButton.baseWidth,
+      buttonBaseHeight: this.pauseButton.baseHeight,
     });
+    this.setButtonBaseScale(this.pauseButton, pauseLayout.buttonScale);
+    this.setButtonPosition(this.pauseButton, pauseLayout.x, pauseLayout.y);
 
-    this.setButtonBaseScale(this.startButton, buttonLayout.buttonScale);
-    this.setButtonBaseScale(this.soundButton, buttonLayout.buttonScale);
-    this.setButtonPosition(this.startButton, buttonLayout.leftX, buttonLayout.buttonsY);
-    this.setButtonPosition(this.soundButton, buttonLayout.rightX, buttonLayout.buttonsY);
+    const menuCenterY = Math.max(boardTop + boardSize * 0.5, Math.round(h * 0.47));
+    const menuGap = 84 * menuScale;
+    this.menuCard.setPosition(hudX, menuCenterY);
+    this.setButtonBaseScale(this.menuContinueButton, menuScale);
+    this.setButtonBaseScale(this.menuSoundButton, menuScale);
+    this.setButtonBaseScale(this.menuHomeButton, menuScale);
+    this.setButtonPosition(this.menuContinueButton, hudX, menuCenterY - menuGap * 0.18);
+    this.setButtonPosition(this.menuSoundButton, hudX, menuCenterY + menuGap * 0.72);
+    this.setButtonPosition(this.menuHomeButton, hudX, menuCenterY + menuGap * 1.62);
 
     const boardMetrics = this.drawBoard(boardLeft, boardTop, boardSize);
     for (let row = 0; row < GAME_CONFIG.gridSize; row += 1) {
@@ -1136,7 +1384,9 @@ class GameScene extends Phaser.Scene {
 
     this.flashOverlay.setSize(w, h);
     this.dangerOverlay.setSize(w, h);
+    this.menuDimmer.setSize(w, h);
     this.syncActiveTargetsToLayout();
+    this.refreshScreenUi();
   }
 
   layoutBackdrop(width, height, boardLeft, boardTop, boardSize) {
@@ -1223,28 +1473,16 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  updateOverlayState(mode) {
-    this.overlayMode = mode;
-    if (mode === "playing") {
-      this.overlayContainer.setVisible(false);
-      return;
-    }
-    const copy = getOverlayCopy(mode);
-    this.overlayHeadline.setText(copy.headline);
-    this.overlaySubline.setText(
-      mode === "finished" ? `${copy.subline}: ${String(this.score).padStart(2, "0")}` : copy.subline,
-    );
-    this.overlayContainer.setVisible(true).setAlpha(1).setScale(mode === "finished" ? 1.04 : 1);
-  }
-
   onResize(gameSize) {
     this.layout(gameSize.width, gameSize.height);
   }
 
   snapshotState() {
     return {
-      mode: this.isRunning ? "playing" : "idle",
-      overlayMode: this.overlayMode,
+      mode: this.getSnapshotMode(),
+      overlayMode: this.getSnapshotMode(),
+      screenMode: this.screenMode,
+      menuOpen: this.isMenuOpen,
       score: this.score,
       tier: this.tier,
       remainingTimeSec: Math.ceil(Math.max(0, this.remainingTimeMs) / 1000),
@@ -1257,8 +1495,12 @@ class GameScene extends Phaser.Scene {
         variantId: target.variantId,
       })),
       buttons: {
-        start: this.startButton?.labelNode?.text ?? "",
-        sound: this.soundButton?.labelNode?.text ?? "",
+        home: this.homePlayButton?.labelNode?.text ?? "",
+        pause: this.pauseButton?.labelNode?.text ?? "",
+        continue: this.menuContinueButton?.labelNode?.text ?? "",
+        sound: this.menuSoundButton?.labelNode?.text ?? "",
+        menuHome: this.menuHomeButton?.labelNode?.text ?? "",
+        restart: this.restartButton?.labelNode?.text ?? "",
       },
     };
   }

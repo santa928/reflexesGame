@@ -4,9 +4,11 @@ import assert from "node:assert/strict";
 import {
   NEON_THEME,
   computeBottomControlLayout,
+  computeTopRightControlLayout,
   formatBreachLevel,
   formatUptime,
   getOverlayCopy,
+  getPauseMenuCopy,
   getTimeStyle,
 } from "../src/themeStyle.js";
 
@@ -26,11 +28,28 @@ test("overlay copy exposes start and finish headlines", () => {
   assert.deepEqual(getOverlayCopy("idle"), {
     headline: "じゅんびちゅう...",
     subline: "スタートを おしてね",
+    cta: "スタート",
+  });
+  assert.deepEqual(getOverlayCopy("home"), {
+    headline: "ぴかぴかタッチ",
+    subline: "ひかったら タッチ!",
+    cta: "あそぶ！",
   });
   assert.deepEqual(getOverlayCopy("finished"), {
     headline: "おしまい!",
     subline: "きみの てんすう",
+    cta: "もういちど",
   });
+});
+
+test("pause menu copy exposes continue, sound toggle, and home labels", () => {
+  assert.deepEqual(getPauseMenuCopy(false), {
+    title: "メニュー",
+    continueLabel: "つづける",
+    soundLabel: "おと: なし",
+    homeLabel: "おうちへ",
+  });
+  assert.equal(getPauseMenuCopy(true).soundLabel, "おと: あり");
 });
 
 test("hud formatting uses breach level and uptime strings", () => {
@@ -74,4 +93,19 @@ test("bottom controls avoid drifting too low on tablet portrait", () => {
   assert.equal(layout.boardGap <= 92, true);
   assert.equal(layout.bottomMargin >= 64, true);
   assert.equal(layout.buttonsY < 910, true);
+});
+
+test("top-right pause control keeps a safe tap zone on mobile portrait", () => {
+  const layout = computeTopRightControlLayout({
+    width: 390,
+    height: 844,
+    buttonBaseWidth: 96,
+    buttonBaseHeight: 96,
+  });
+
+  assert.equal(layout.x > 320, true);
+  assert.equal(layout.y < 80, true);
+  assert.equal(layout.buttonScale > 0.5, true);
+  assert.equal(layout.hitAreaWidth >= 60, true);
+  assert.equal(layout.hitAreaHeight >= 60, true);
 });

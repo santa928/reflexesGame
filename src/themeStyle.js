@@ -26,15 +26,29 @@ const OVERLAY_COPY = Object.freeze({
   idle: Object.freeze({
     headline: "じゅんびちゅう...",
     subline: "スタートを おしてね",
+    cta: "スタート",
+  }),
+  home: Object.freeze({
+    headline: "ぴかぴかタッチ",
+    subline: "ひかったら タッチ!",
+    cta: "あそぶ！",
   }),
   playing: Object.freeze({
     headline: "",
     subline: "",
+    cta: "",
   }),
   finished: Object.freeze({
     headline: "おしまい!",
     subline: "きみの てんすう",
+    cta: "もういちど",
   }),
+});
+
+const MENU_COPY = Object.freeze({
+  title: "メニュー",
+  continueLabel: "つづける",
+  homeLabel: "おうちへ",
 });
 
 export function getTimeStyle(remainingSec) {
@@ -47,6 +61,13 @@ export function getTimeStyle(remainingSec) {
 
 export function getOverlayCopy(mode) {
   return OVERLAY_COPY[mode] ?? OVERLAY_COPY.idle;
+}
+
+export function getPauseMenuCopy(soundEnabled) {
+  return {
+    ...MENU_COPY,
+    soundLabel: soundEnabled ? "おと: あり" : "おと: なし",
+  };
 }
 
 export function formatBreachLevel(score) {
@@ -112,5 +133,31 @@ export function computeBottomControlLayout({
     bottomMargin,
     leftX,
     rightX,
+  };
+}
+
+export function computeTopRightControlLayout({
+  width,
+  buttonBaseWidth,
+  buttonBaseHeight,
+}) {
+  const isMobilePortrait = width < 480;
+  const desiredSize = isMobilePortrait ? 52 : 60;
+  const safeTop = isMobilePortrait ? 20 : 24;
+  const safeRight = isMobilePortrait ? 16 : 24;
+  const buttonScale = Math.min(Math.max(desiredSize / buttonBaseWidth, 0.5), 0.9);
+  const buttonWidth = buttonBaseWidth * buttonScale;
+  const buttonHeight = buttonBaseHeight * buttonScale;
+  const hitAreaWidth = Math.max(60, buttonWidth);
+  const hitAreaHeight = Math.max(60, buttonHeight);
+
+  return {
+    buttonScale,
+    buttonWidth,
+    buttonHeight,
+    hitAreaWidth,
+    hitAreaHeight,
+    x: width - safeRight - buttonWidth * 0.5,
+    y: safeTop + buttonHeight * 0.5,
   };
 }

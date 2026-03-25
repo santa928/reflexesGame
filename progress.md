@@ -61,3 +61,9 @@ TODO
 - Playwright で `score 19 -> 20` から Tier3 の 2 体共存、`29 -> 30` から Tier4 の 3 体共存を再現し、ヒット後・見逃し後も残りターゲットが消えないことを確認した。
 - `390x844` と `768x1024` で `tmp/ui-check/async-tier3-mobile.png`, `tmp/ui-check/async-tier4-mobile.png`, `tmp/ui-check/async-tier3-tablet.png`, `tmp/ui-check/async-tier4-tablet.png` を保存し、HUD・盤面・下部ボタンの重なりやはみ出しがないことを確認した。
 - Playwright のコンソールログは Phaser の起動ログのみで、Errors 0 / Warnings 0 を確認した。
+
+2026-03-25
+- `docs/plans/2026-03-25-home-pause-menu-design.md` と `docs/plans/2026-03-25-home-pause-menu-implementation.md` を追加し、ホーム新設と右上ポーズメニュー化の要件・手順を記録した。
+- `src/buttonStyle.js` に `pause` ボタン仕様を追加し、`src/themeStyle.js` に `home` copy / pause menu copy / 右上ポーズ配置 helper を追加した。
+- `src/main.js` を更新し、初期ホーム画面、中央 `あそぶ！`、右上ポーズ、`つづける` / `おと` / `おうちへ` メニュー、終了時 `もういちど` を実装した。
+- `tests/ui-flow.test.mjs` を追加し、`tests/button-style.test.mjs` と `tests/theme-style.test.mjs` を拡張して新しい UI フローを固定した。
