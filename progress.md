@@ -1,5 +1,14 @@
 Original prompt: どうぶつテーマ化と段階難化の改善プランを実装し、Tier3以降は「2匹出る / 1匹押したらその1匹だけ消えて +1 / もう1匹は残る」仕様にする。
 
+2026-03-28
+- `https://github.com/santa928/reflexesGame/issues/3` の「画質が悪い」について root cause を再調査した。Playwright で `devicePixelRatio=2` を再現しても `canvas.width == clientWidth` / `drawingBufferWidth == clientWidth` のままで、Phaser 3.70.0 側の HighDPI 制約が主因であることを確認した。
+- `docs/plans/2026-03-28-render-quality-design.md` と `docs/plans/2026-03-28-render-quality-implementation.md` を追加し、全面リプレースではなく「文字 UI を DOM overlay 化する」緩和策を要件・手順として明文化した。
+- `index.html` に `#game-ui-overlay` を追加し、`styles.css` に overlay 用レイヤとネオン文字スタイルを追加した。`src/main.js` では Phaser `Text` を測定専用に残しつつ、HUD / ホーム / 終了 / メニュー / ボタンラベルを DOM 側へ同期するようにした。
+- `tests/render-quality.test.mjs` を新規追加し、overlay root / CSS / main.js の同期処理を RED -> GREEN で固定した。
+- Docker 上で `docker run --rm -v "$PWD":/app -w /app node:20 node --test tests/render-quality.test.mjs` を先に FAIL させ、その後 `docker run --rm -v "$PWD":/app -w /app node:20 sh -lc 'node --test tests/*.test.mjs && node --check src/main.js'` を実行して 36 件すべて通過することを確認した。
+- Playwright は保存セッションの通常キャッシュが残って古い `styles.css` を見続けたため、`playwright-cli session-stop` + `playwright-cli session-delete` で user data を破棄して fresh load に切り替えた。
+- fresh load 後、`390x844` のホーム `tmp/ui-check/render-quality-home-390.png`、`390x844` のプレイ `tmp/ui-check/render-quality-playing-390.png`、`768x1024` のメニュー `tmp/ui-check/render-quality-menu-768.png` を目視確認し、文字 overlay が canvas 上で鮮明に見え、少なくともホーム / HUD / メニュー文言に致命的な重なりや欠けがないことを確認した。
+
 2026-03-27
 - `https://github.com/santa928/reflexesGame/issues/2` 向けに `docs/plans/2026-03-27-levelup-banner-position-design.md` と `docs/plans/2026-03-27-levelup-banner-position-implementation.md` を追加し、盤面中央のレベルアップ表示を HUD 直下の通知帯へ移す要件と手順を記録した。
 - `src/themeStyle.js` に `computeLevelBannerLayout()` を追加し、HUD 下端と盤面上端の実寸から通知帯の幅・高さ・Y 座標を計算するようにした。狭い帯域では少しだけ HUD 側へ食い込ませ、可読性を優先している。

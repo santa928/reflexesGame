@@ -31,8 +31,53 @@ body {
   height: 100%;
 }
 
+#app {
+  position: relative;
+  overflow: hidden;
+}
+
 #game-root canvas {
   display: block;
+}
+
+#game-ui-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.game-ui-text {
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--text);
+  font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", sans-serif;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  user-select: none;
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.55);
+}
+
+.game-ui-button-label {
+  line-height: 1;
+  transition:
+    top 80ms ease-out,
+    left 80ms ease-out,
+    font-size 80ms ease-out;
+}
+
+.game-ui-hud-text {
+  text-transform: none;
+}
+
+.game-ui-hidden {
+  opacity: 0;
 }
 
 #rotate-overlay {

@@ -158,12 +158,19 @@ class GameScene extends Phaser.Scene {
       ambientOrbs: [],
       stars: [],
     };
+    this.domUi = {
+      root: null,
+      nodes: {},
+    };
+    this.isLevelBannerActive = false;
+    this.statusColor = "#bae6fd";
   }
 
   create() {
     this.setupState();
     this.createBackdrop();
     this.createUi();
+    this.createDomUi();
     this.createGrid();
     this.layout(this.scale.width, this.scale.height);
     this.goHome();
@@ -192,6 +199,8 @@ class GameScene extends Phaser.Scene {
     this.selectedMode = preservedMode;
     this.isMenuOpen = false;
     this.wasRunningBeforeMenu = false;
+    this.isLevelBannerActive = false;
+    this.statusColor = "#bae6fd";
   }
 
   createBackdrop() {
@@ -432,6 +441,274 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Creates a DOM overlay so browser-native text can stay crisp even though
+   * Phaser 3 renders the main scene at a 1x backing buffer on HighDPI screens.
+   */
+  createDomUi() {
+    const root = document.getElementById("game-ui-overlay");
+    if (!root) {
+      return;
+    }
+
+    root.replaceChildren();
+    this.domUi.root = root;
+    this.domUi.nodes = {};
+
+    [
+      ["score", "game-ui-text game-ui-hud-text"],
+      ["time", "game-ui-text game-ui-hud-text"],
+      ["badge", "game-ui-text game-ui-hud-text"],
+      ["status", "game-ui-text game-ui-hud-text"],
+      ["homeHeadline", "game-ui-text game-ui-card-copy"],
+      ["homeSubline", "game-ui-text game-ui-card-copy"],
+      ["homeModeTitle", "game-ui-text game-ui-card-copy"],
+      ["homeModeHint", "game-ui-text game-ui-card-copy"],
+      ["overlayHeadline", "game-ui-text game-ui-card-copy"],
+      ["overlaySubline", "game-ui-text game-ui-card-copy"],
+      ["menuTitle", "game-ui-text game-ui-card-copy"],
+      ["levelBanner", "game-ui-text game-ui-card-copy"],
+      ["buttonHomePlay", "game-ui-text game-ui-button-label"],
+      ["buttonHomeNormal", "game-ui-text game-ui-button-label"],
+      ["buttonHomeSerious", "game-ui-text game-ui-button-label"],
+      ["buttonRestart", "game-ui-text game-ui-button-label"],
+      ["buttonPause", "game-ui-text game-ui-button-label"],
+      ["buttonMenuContinue", "game-ui-text game-ui-button-label"],
+      ["buttonMenuSound", "game-ui-text game-ui-button-label"],
+      ["buttonMenuHome", "game-ui-text game-ui-button-label"],
+    ].forEach(([key, className]) => {
+      const node = document.createElement("div");
+      node.className = `${className} game-ui-hidden`;
+      node.dataset.uiKey = key;
+      root.append(node);
+      this.domUi.nodes[key] = node;
+    });
+
+    this.homePlayButton.domLabelKey = "buttonHomePlay";
+    this.homeNormalModeButton.domLabelKey = "buttonHomeNormal";
+    this.homeSeriousModeButton.domLabelKey = "buttonHomeSerious";
+    this.restartButton.domLabelKey = "buttonRestart";
+    this.pauseButton.domLabelKey = "buttonPause";
+    this.menuContinueButton.domLabelKey = "buttonMenuContinue";
+    this.menuSoundButton.domLabelKey = "buttonMenuSound";
+    this.menuHomeButton.domLabelKey = "buttonMenuHome";
+
+    [
+      this.scoreText,
+      this.timeText,
+      this.levelBadgeText,
+      this.statusText,
+      this.levelBannerText,
+      this.homeHeadline,
+      this.homeSubline,
+      this.homeModeTitle,
+      this.homeModeHint,
+      this.overlayHeadline,
+      this.overlaySubline,
+      this.menuTitle,
+      this.homePlayButton.labelNode,
+      this.homeNormalModeButton.labelNode,
+      this.homeSeriousModeButton.labelNode,
+      this.restartButton.labelNode,
+      this.pauseButton.labelNode,
+      this.menuContinueButton.labelNode,
+      this.menuSoundButton.labelNode,
+      this.menuHomeButton.labelNode,
+    ].forEach((textNode) => textNode.setAlpha(0));
+  }
+
+  setDomText(key, text) {
+    const node = this.domUi.nodes[key];
+    if (!node) {
+      return;
+    }
+    node.textContent = text ?? "";
+  }
+
+  setDomVisible(key, visible) {
+    const node = this.domUi.nodes[key];
+    if (!node) {
+      return;
+    }
+    node.classList.toggle("game-ui-hidden", !visible);
+  }
+
+  syncDomVisibility() {
+    const isHome = this.screenMode === "home";
+    const isCountdown = this.screenMode === "countdown";
+    const isFinished = this.screenMode === "finished";
+    const showGameChrome = !isHome;
+    const showMenu = this.isMenuOpen;
+
+    this.setDomVisible("score", showGameChrome);
+    this.setDomVisible("time", showGameChrome);
+    this.setDomVisible("badge", showGameChrome);
+    this.setDomVisible("status", showGameChrome && !this.isLevelBannerActive);
+    this.setDomVisible("homeHeadline", isHome);
+    this.setDomVisible("homeSubline", isHome);
+    this.setDomVisible("homeModeTitle", isHome);
+    this.setDomVisible("homeModeHint", isHome);
+    this.setDomVisible("overlayHeadline", (isCountdown || isFinished) && !showMenu);
+    this.setDomVisible("overlaySubline", (isCountdown || isFinished) && !showMenu);
+    this.setDomVisible("menuTitle", showMenu);
+    this.setDomVisible("levelBanner", this.isLevelBannerActive);
+    this.setDomVisible("buttonHomePlay", isHome);
+    this.setDomVisible("buttonHomeNormal", isHome);
+    this.setDomVisible("buttonHomeSerious", isHome);
+    this.setDomVisible("buttonRestart", isFinished && !showMenu);
+    this.setDomVisible("buttonPause", showGameChrome && !showMenu && !isCountdown);
+    this.setDomVisible("buttonMenuContinue", showMenu);
+    this.setDomVisible("buttonMenuSound", showMenu);
+    this.setDomVisible("buttonMenuHome", showMenu);
+  }
+
+  getWorldMetrics(textNode) {
+    const matrix = textNode.getWorldTransformMatrix();
+    return {
+      x: matrix.tx,
+      y: matrix.ty,
+      scaleX: Math.hypot(matrix.a, matrix.b),
+      scaleY: Math.hypot(matrix.c, matrix.d),
+    };
+  }
+
+  getTextFontSize(textNode) {
+    const rawFontSize = textNode.style.fontSize;
+    const parsed = Number.parseFloat(String(rawFontSize));
+    return Number.isFinite(parsed) ? parsed : 16;
+  }
+
+  buildDomTransform(anchor = "center") {
+    if (anchor === "top") {
+      return "translate(-50%, 0)";
+    }
+    return "translate(-50%, -50%)";
+  }
+
+  syncDomFromPhaser(key, textNode, {
+    anchor = "center",
+    width = null,
+    color = null,
+    glowColor = null,
+    glowBlur = 10,
+  } = {}) {
+    const node = this.domUi.nodes[key];
+    if (!node || !textNode) {
+      return;
+    }
+
+    const metrics = this.getWorldMetrics(textNode);
+    const fontSize = this.getTextFontSize(textNode) * metrics.scaleY;
+    const resolvedColor = color ?? textNode.style.color ?? NEON_THEME.palette.text;
+    const resolvedGlowColor = glowColor ?? resolvedColor;
+
+    this.setDomText(key, textNode.text);
+    node.style.left = `${metrics.x}px`;
+    node.style.top = `${metrics.y}px`;
+    node.style.fontSize = `${fontSize}px`;
+    node.style.color = resolvedColor;
+    node.style.letterSpacing = `${textNode.letterSpacing ?? 0}px`;
+    node.style.textShadow = `0 0 ${glowBlur}px ${resolvedGlowColor}`;
+    node.style.transform = this.buildDomTransform(anchor);
+    if (width) {
+      node.style.width = `${width}px`;
+    } else {
+      node.style.width = "auto";
+    }
+  }
+
+  syncDomButtonLabel(button) {
+    if (!button?.domLabelKey) {
+      return;
+    }
+    const node = this.domUi.nodes[button.domLabelKey];
+    if (!node) {
+      return;
+    }
+
+    const scaleX = button.container.scaleX || 1;
+    const scaleY = button.container.scaleY || 1;
+    const offsetX = (button.spec.label.offsetX ?? 0) * scaleX;
+    const offsetY = ((button.spec.label.offsetY ?? 0) + button.frontLayer.y) * scaleY;
+
+    this.setDomText(button.domLabelKey, button.spec.label.text);
+    node.style.left = `${button.container.x + offsetX}px`;
+    node.style.top = `${button.container.y + offsetY}px`;
+    node.style.fontSize = `${button.spec.label.fontSize * scaleY}px`;
+    node.style.color = button.spec.label.textColor;
+    node.style.letterSpacing = `${button.spec.label.letterSpacing}px`;
+    node.style.textShadow = `0 0 ${button.spec.label.glowBlur ?? 8}px ${button.spec.colors.glowColor}`;
+    node.style.transform = this.buildDomTransform("center");
+    node.style.width = "auto";
+  }
+
+  syncAllDomText() {
+    this.syncDomFromPhaser("score", this.scoreText, {
+      anchor: "top",
+      glowColor: "#22d3ee",
+      glowBlur: 12,
+    });
+    this.syncDomFromPhaser("time", this.timeText, {
+      anchor: "top",
+      color: this.timeColor,
+      glowColor: this.timeColor,
+      glowBlur: 10,
+    });
+    this.syncDomFromPhaser("badge", this.levelBadgeText, {
+      color: "#f8fafc",
+      glowColor: "#22d3ee",
+      glowBlur: 8,
+    });
+    this.syncDomFromPhaser("status", this.statusText, {
+      anchor: "top",
+      color: this.statusColor,
+      glowColor: this.statusColor,
+      glowBlur: 10,
+    });
+    this.syncDomFromPhaser("homeHeadline", this.homeHeadline, {
+      glowColor: "#22d3ee",
+      glowBlur: 16,
+    });
+    this.syncDomFromPhaser("homeSubline", this.homeSubline, {
+      glowColor: "#22d3ee",
+      glowBlur: 8,
+    });
+    this.syncDomFromPhaser("homeModeTitle", this.homeModeTitle, {
+      glowColor: "#22d3ee",
+      glowBlur: 8,
+    });
+    this.syncDomFromPhaser("homeModeHint", this.homeModeHint, {
+      glowColor: this.homeModeHint.style.color ?? "#bae6fd",
+      glowBlur: 8,
+    });
+    this.syncDomFromPhaser("overlayHeadline", this.overlayHeadline, {
+      glowColor: this.overlayHeadline.style.color ?? "#22d3ee",
+      glowBlur: 16,
+    });
+    this.syncDomFromPhaser("overlaySubline", this.overlaySubline, {
+      glowColor: this.overlaySubline.style.color ?? "#22d3ee",
+      glowBlur: 12,
+    });
+    this.syncDomFromPhaser("menuTitle", this.menuTitle, {
+      glowColor: "#22d3ee",
+      glowBlur: 12,
+    });
+    this.syncDomFromPhaser("levelBanner", this.levelBannerText, {
+      glowColor: "#facc15",
+      glowBlur: 14,
+    });
+    [
+      this.homePlayButton,
+      this.homeNormalModeButton,
+      this.homeSeriousModeButton,
+      this.restartButton,
+      this.pauseButton,
+      this.menuContinueButton,
+      this.menuSoundButton,
+      this.menuHomeButton,
+    ].forEach((button) => this.syncDomButtonLabel(button));
+  }
+
   createGrid() {
     const totalCells = GAME_CONFIG.gridSize * GAME_CONFIG.gridSize;
     for (let i = 0; i < totalCells; i += 1) {
@@ -552,6 +829,7 @@ class GameScene extends Phaser.Scene {
       .setPosition(spec.label.offsetX ?? 0, spec.label.offsetY ?? 0)
       .setShadow(0, 0, spec.colors.glowColor, spec.label.glowBlur ?? 10, false, true);
     this.refreshButtonRestingState(button);
+    this.syncDomButtonLabel(button);
   }
 
   setButtonVisible(button, visible) {
@@ -576,6 +854,7 @@ class GameScene extends Phaser.Scene {
     if (!button.pressTween) {
       button.frontLayer.y = 0;
     }
+    this.syncDomButtonLabel(button);
   }
 
   setButtonBaseScale(button, scale) {
@@ -605,6 +884,7 @@ class GameScene extends Phaser.Scene {
       yoyo: true,
       onStart: () => {
         button.frontLayer.y = button.spec.interaction.pressOffsetY;
+        this.syncDomButtonLabel(button);
       },
       onComplete: () => {
         button.pressTween = null;
@@ -635,6 +915,23 @@ class GameScene extends Phaser.Scene {
     this.homeSeriousModeButton.selected = this.selectedMode === "serious";
     this.updateButtonVisual(this.homeNormalModeButton, getGameModeCopy(GAME_MODES.normal).label);
     this.updateButtonVisual(this.homeSeriousModeButton, getGameModeCopy(GAME_MODES.serious).label);
+    this.syncDomFromPhaser("homeHeadline", this.homeHeadline, {
+      glowColor: "#22d3ee",
+      glowBlur: 16,
+    });
+    this.syncDomFromPhaser("homeSubline", this.homeSubline, {
+      glowColor: "#22d3ee",
+      glowBlur: 8,
+    });
+    this.syncDomFromPhaser("homeModeTitle", this.homeModeTitle, {
+      glowColor: "#22d3ee",
+      glowBlur: 8,
+    });
+    this.syncDomFromPhaser("homeModeHint", this.homeModeHint, {
+      color: this.homeModeHint.style.color ?? "#bae6fd",
+      glowColor: this.homeModeHint.style.color ?? "#22d3ee",
+      glowBlur: 8,
+    });
   }
 
   refreshOverlayCopy() {
@@ -654,6 +951,14 @@ class GameScene extends Phaser.Scene {
         .setFontSize(countSize)
         .setColor("#f8fafc")
         .setShadow(0, 0, "#22d3ee", 18, false, true);
+      this.syncDomFromPhaser("overlayHeadline", this.overlayHeadline, {
+        glowColor: "#22d3ee",
+        glowBlur: 14,
+      });
+      this.syncDomFromPhaser("overlaySubline", this.overlaySubline, {
+        glowColor: "#22d3ee",
+        glowBlur: 18,
+      });
       return;
     }
 
@@ -673,6 +978,14 @@ class GameScene extends Phaser.Scene {
       .setColor("#bae6fd")
       .setShadow(0, 0, "#22d3ee", 10, false, true);
     this.updateButtonVisual(this.restartButton, copy.cta);
+    this.syncDomFromPhaser("overlayHeadline", this.overlayHeadline, {
+      glowColor: "#22d3ee",
+      glowBlur: 16,
+    });
+    this.syncDomFromPhaser("overlaySubline", this.overlaySubline, {
+      glowColor: "#22d3ee",
+      glowBlur: 10,
+    });
   }
 
   refreshMenuCopy() {
@@ -681,6 +994,7 @@ class GameScene extends Phaser.Scene {
     this.updateButtonVisual(this.menuContinueButton, copy.continueLabel);
     this.updateButtonVisual(this.menuSoundButton, copy.soundLabel);
     this.updateButtonVisual(this.menuHomeButton, copy.homeLabel);
+    this.syncAllDomText();
   }
 
   pauseGameplayRuntime() {
@@ -766,6 +1080,7 @@ class GameScene extends Phaser.Scene {
         zone.input.enabled = showGameChrome && !showMenu && this.isRunning;
       }
     });
+    this.syncDomVisibility();
   }
 
   openPauseMenu() {
@@ -813,6 +1128,7 @@ class GameScene extends Phaser.Scene {
     this.updateHomeCopy();
     this.refreshMenuCopy();
     this.refreshScreenUi();
+    this.syncAllDomText();
   }
 
   prepareRoundState() {
@@ -1194,6 +1510,11 @@ class GameScene extends Phaser.Scene {
 
   updateScoreText(animate = false) {
     this.scoreText.setText(formatBreachLevel(this.score));
+    this.syncDomFromPhaser("score", this.scoreText, {
+      anchor: "top",
+      glowColor: "#22d3ee",
+      glowBlur: 12,
+    });
     if (!animate) {
       return;
     }
@@ -1211,6 +1532,11 @@ class GameScene extends Phaser.Scene {
     this.levelBadgeText.setText(`レベル ${this.tier}`);
     this.levelBadgeBackground.fillColor = this.currentTierConfig.badgeColor;
     this.levelBadgeBackground.setStrokeStyle(2, this.currentTierConfig.badgeColor, 0.95);
+    this.syncDomFromPhaser("badge", this.levelBadgeText, {
+      color: "#f8fafc",
+      glowColor: "#22d3ee",
+      glowBlur: 8,
+    });
   }
 
   updateRemainingTime() {
@@ -1229,10 +1555,17 @@ class GameScene extends Phaser.Scene {
   updateTimeText() {
     const secondsLeft = Math.ceil(Math.max(0, this.remainingTimeMs) / 1000);
     const timeStyle = getTimeStyle(secondsLeft);
+    this.timeColor = timeStyle.color;
     this.timeText
       .setText(formatUptime(this.remainingTimeMs))
       .setColor(timeStyle.color)
       .setShadow(0, 0, timeStyle.color, 10, false, true);
+    this.syncDomFromPhaser("time", this.timeText, {
+      anchor: "top",
+      color: timeStyle.color,
+      glowColor: timeStyle.color,
+      glowBlur: 10,
+    });
 
     this.dangerOverlay.setAlpha(timeStyle.isUrgent && this.isRunning ? 0.05 : 0);
     if (timeStyle.isUrgent && this.isRunning && secondsLeft !== this.lastUrgentSecond) {
@@ -1250,7 +1583,14 @@ class GameScene extends Phaser.Scene {
   }
 
   setStatusText(message, color = "#bae6fd") {
+    this.statusColor = color;
     this.statusText.setText(message).setColor(color).setShadow(0, 0, color, 10, false, true);
+    this.syncDomFromPhaser("status", this.statusText, {
+      anchor: "top",
+      color,
+      glowColor: color,
+      glowBlur: 10,
+    });
   }
 
   finishGame() {
@@ -1277,8 +1617,14 @@ class GameScene extends Phaser.Scene {
 
     this.flashScreen("#facc15", 0.16, 160);
     this.levelBannerText.setText("レベルアップ!");
+    this.isLevelBannerActive = true;
     this.statusText.setVisible(false);
     this.levelBanner.setVisible(true).setAlpha(0).setScale(0.7);
+    this.syncDomFromPhaser("levelBanner", this.levelBannerText, {
+      glowColor: "#facc15",
+      glowBlur: 14,
+    });
+    this.syncDomVisibility();
     this.levelBannerTween = this.tweens.add({
       targets: this.levelBanner,
       alpha: { from: 0, to: 1 },
@@ -1290,6 +1636,8 @@ class GameScene extends Phaser.Scene {
       onComplete: () => {
         this.levelBanner.setVisible(false).setAlpha(0).setScale(0.7);
         this.statusText.setVisible(this.screenMode !== "home");
+        this.isLevelBannerActive = false;
+        this.syncDomVisibility();
         this.levelBannerTween = null;
       },
     });
@@ -1624,6 +1972,7 @@ class GameScene extends Phaser.Scene {
     this.syncActiveTargetsToLayout();
     this.refreshOverlayCopy();
     this.refreshScreenUi();
+    this.syncAllDomText();
   }
 
   layoutBackdrop(width, height, boardLeft, boardTop, boardSize) {
@@ -1749,6 +2098,10 @@ class GameScene extends Phaser.Scene {
     this.clearTimers();
     this.clearActiveTargets(false);
     this.scale.off("resize", this.onResize, this);
+    if (this.domUi.root) {
+      this.domUi.root.replaceChildren();
+      this.domUi.nodes = {};
+    }
   }
 }
 
