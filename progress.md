@@ -1,6 +1,13 @@
 Original prompt: どうぶつテーマ化と段階難化の改善プランを実装し、Tier3以降は「2匹出る / 1匹押したらその1匹だけ消えて +1 / もう1匹は残る」仕様にする。
 
 2026-03-28
+- ユーザー要望「ホームで音を切り替えたい」「終了後にホームへ戻りたい」に対し、`docs/plans/2026-03-28-home-audio-finish-nav-design.md` と `docs/plans/2026-03-28-home-audio-finish-nav-implementation.md` を追加し、ホーム音トグルと終了時ホーム導線の最小差分方針を記録した。
+- Gemini 相談は `~/.codex/skills/gemini-cli/scripts/run_gemini.sh` で試行したが、`gemini-3.1-pro-preview` が `429 MODEL_CAPACITY_EXHAUSTED` で失敗したため、失敗証跡を残して Codex 側の手動設計へ切り替えた。
+- `tests/theme-style.test.mjs` と `tests/ui-flow.test.mjs` を RED -> GREEN で更新し、`computeHomeScreenLayout()` / `computeFinishOverlayLayout()` の収まり条件、`main.js` のホーム音ボタンと終了時 `おうちへ` 導線を固定した。
+- `src/themeStyle.js` にホーム/終了画面の縦積み layout helper を追加し、`src/main.js` では `homeSoundButton` と `finishHomeButton`、DOM overlay 同期、snapshot 出力、表示条件を実装した。
+- Docker 上で `docker run --rm -v \"$PWD\":/app -w /app node:20 node --test tests/theme-style.test.mjs tests/ui-flow.test.mjs` を FAIL -> PASS で確認し、その後 `docker run --rm -v \"$PWD\":/app -w /app node:20 sh -lc 'node --test tests/*.test.mjs && node --check src/main.js'` を実行して 39 件すべて通過した。
+- Docker の `nginx:alpine` で `http://127.0.0.1:18082` を配信し、Playwright 用イメージ内に一時的に `playwright` パッケージを入れて `tmp/verify-home-audio-finish-nav.cjs` を実行した。`390x844` と `768x1024` の両方で、ホームの `おと: なし -> おと: あり` 切替、終了画面の `おうちへ` 表示、`おうちへ` からホーム復帰までを state JSON とスクリーンショットで確認した。
+- スクリーンショットは `tmp/ui-check/home-audio-390x844.png`, `tmp/ui-check/finish-home-390x844.png`, `tmp/ui-check/home-audio-768x1024.png`, `tmp/ui-check/finish-home-768x1024.png` に保存した。モバイル側で WebGL の `ReadPixels` 警告は出たが、error はなく、操作状態 JSON も期待どおりだった。
 - ユーザー指摘の「コンボ継続中に `あと N こ!` が出る違和感」に対応するため、`docs/plans/2026-03-28-combo-status-copy-design.md` と `docs/plans/2026-03-28-combo-status-copy-implementation.md` を追加し、残数訴求をやめて逐次行動ガイドへ寄せる方針と手順を記録した。
 - Gemini 相談は `run_gemini.sh` 実行まではできたが、このターンでは設計回答が返らず取得不能だったため、失敗証跡を残して Codex 側の最小差分設計へ切り替えた。
 - `tests/theme-style.test.mjs` と `tests/ui-flow.test.mjs` を RED -> GREEN で更新し、継続ヒット時 helper が `つぎの ひかりも タッチ!` を返すこと、`main.js` が旧 `あと ${this.activeTargets.length}こ!` を使わないことを固定した。

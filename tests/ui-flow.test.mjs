@@ -10,14 +10,20 @@ const mainPath = path.resolve(__dirname, "../src/main.js");
 test("main scene defines home screen and pause menu state transitions", () => {
   const source = fs.readFileSync(mainPath, "utf8");
 
+  assert.match(source, /computeHomeScreenLayout\(/);
+  assert.match(source, /computeFinishOverlayLayout\(/);
   assert.match(source, /computeLevelBannerLayout/);
   assert.match(source, /this\.screenMode = "home"/);
   assert.match(source, /this\.screenMode = "countdown"/);
   assert.match(source, /this\.selectedMode = "normal"/);
   assert.match(source, /label:\s*"あそぶ！"/);
+  assert.match(source, /this\.homeSoundButton = this\.createButton\(/);
+  assert.match(source, /label:\s*this\.getSoundLabel\(\)/);
   assert.match(source, /label:\s*"ふつう"/);
   assert.match(source, /label:\s*"しんけん"/);
   assert.match(source, /label:\s*"もういちど"/);
+  assert.match(source, /this\.finishHomeButton = this\.createButton\(/);
+  assert.match(source, /label:\s*"おうちへ"/);
   assert.match(source, /label:\s*"つづける"/);
   assert.match(source, /selectGameMode\(mode\)/);
   assert.match(source, /adjustScore\(delta/);
@@ -35,4 +41,6 @@ test("main scene defines home screen and pause menu state transitions", () => {
   assert.match(source, /this\.levelBanner\.setPosition\(hudX,\s*levelBannerLayout\.y\)/);
   assert.match(source, /getSnapshotMode\(\)/);
   assert.match(source, /selectedMode: this\.selectedMode/);
+  assert.match(source, /homeSound: this\.homeSoundButton\?\.labelNode\?\.text \?\? ""/);
+  assert.match(source, /finishHome: this\.finishHomeButton\?\.labelNode\?\.text \?\? ""/);
 });

@@ -325,6 +325,172 @@ export function computePauseMenuLayout({
   };
 }
 
+/**
+ * Compute the vertical stack for the home screen so the title card, mode row,
+ * sound toggle, and play CTA fit together without relying on fixed percentages.
+ */
+export function computeHomeScreenLayout({
+  width,
+  height,
+  columnWidth,
+  buttonBaseWidth,
+  buttonBaseHeight,
+  modeButtonBaseWidth,
+  modeButtonBaseHeight,
+  titleHeight,
+  sublineHeight,
+  sectionLabelHeight,
+  hintHeight,
+}) {
+  const isMobilePortrait = width < 480;
+  const safeTop = isMobilePortrait ? 24 : 36;
+  const safeBottom = isMobilePortrait ? 28 : 40;
+  const cardTopPadding = isMobilePortrait ? 28 : 34;
+  const cardBottomPadding = isMobilePortrait ? 26 : 30;
+  const titleGap = isMobilePortrait ? 14 : 18;
+  const sectionGap = isMobilePortrait ? 12 : 14;
+  const hintGap = isMobilePortrait ? 18 : 22;
+  const cardHeight = Math.max(
+    254,
+    Math.ceil(
+      cardTopPadding
+        + titleHeight
+        + titleGap
+        + sublineHeight
+        + sectionGap
+        + sectionLabelHeight
+        + hintGap
+        + hintHeight
+        + cardBottomPadding,
+    ),
+  );
+  const cardWidth = Math.min(columnWidth * 0.98, 430);
+  const modeButtonScale = Math.min(Math.max(columnWidth / 540, 0.68), 0.84);
+  const modeButtonWidth = modeButtonBaseWidth * modeButtonScale;
+  const modeButtonHeight = modeButtonBaseHeight * modeButtonScale;
+  const modeButtonGap = Math.min(28, columnWidth * 0.04);
+  const soundButtonScale = Math.min(Math.max(columnWidth / buttonBaseWidth, 0.74), 1);
+  const soundButtonWidth = buttonBaseWidth * soundButtonScale;
+  const soundButtonHeight = buttonBaseHeight * soundButtonScale;
+  const playButtonScale = Math.min(Math.max(columnWidth / buttonBaseWidth, 0.74), 1);
+  const playButtonWidth = buttonBaseWidth * playButtonScale;
+  const playButtonHeight = buttonBaseHeight * playButtonScale;
+  const cardToModeGap = isMobilePortrait ? 34 : 42;
+  const modeToSoundGap = isMobilePortrait ? 22 : 26;
+  const soundToPlayGap = isMobilePortrait ? 18 : 22;
+  const totalHeight = cardHeight
+    + cardToModeGap
+    + modeButtonHeight
+    + modeToSoundGap
+    + soundButtonHeight
+    + soundToPlayGap
+    + playButtonHeight;
+  const startY = Math.min(
+    Math.max(isMobilePortrait ? 170 : 154, Math.round(height * (isMobilePortrait ? 0.16 : 0.12))),
+    height - safeBottom - totalHeight,
+  );
+  const cardTop = Math.max(safeTop, startY);
+  const cardCenterY = cardTop + cardHeight * 0.5;
+  const cardBottom = cardTop + cardHeight;
+  const modeRowY = cardBottom + cardToModeGap + modeButtonHeight * 0.5;
+  const soundButtonY = modeRowY + modeButtonHeight * 0.5 + modeToSoundGap + soundButtonHeight * 0.5;
+  const playButtonY = soundButtonY + soundButtonHeight * 0.5 + soundToPlayGap + playButtonHeight * 0.5;
+  const playButtonBottom = playButtonY + playButtonHeight * 0.5;
+  const requiredHeight = cardHeight
+    + cardToModeGap
+    + modeButtonHeight
+    + modeToSoundGap
+    + soundButtonHeight
+    + soundToPlayGap
+    + playButtonHeight
+    + safeBottom;
+
+  return {
+    safeTop,
+    safeBottom,
+    cardWidth,
+    cardHeight,
+    cardTop,
+    cardBottom,
+    cardCenterY,
+    requiredHeight,
+    modeButtonScale,
+    modeButtonWidth,
+    modeButtonHeight,
+    modeButtonGap,
+    modeRowY,
+    soundButtonScale,
+    soundButtonWidth,
+    soundButtonHeight,
+    soundButtonY,
+    playButtonScale,
+    playButtonWidth,
+    playButtonHeight,
+    playButtonY,
+    playButtonBottom,
+  };
+}
+
+/**
+ * Compute the finish overlay card plus its restart/home actions so both buttons
+ * remain visible without pinning the stack to a fragile percentage.
+ */
+export function computeFinishOverlayLayout({
+  width,
+  height,
+  columnWidth,
+  boardTop,
+  boardSize,
+  headlineHeight,
+  sublineHeight,
+  buttonBaseWidth,
+  buttonBaseHeight,
+}) {
+  const isMobilePortrait = width < 480;
+  const safeTop = isMobilePortrait ? 28 : 36;
+  const safeBottom = isMobilePortrait ? 28 : 40;
+  const cardTopPadding = isMobilePortrait ? 26 : 30;
+  const cardBottomPadding = isMobilePortrait ? 24 : 28;
+  const textGap = isMobilePortrait ? 18 : 20;
+  const cardHeight = Math.max(
+    176,
+    Math.ceil(cardTopPadding + headlineHeight + textGap + sublineHeight + cardBottomPadding),
+  );
+  const cardWidth = Math.min(columnWidth * 0.96, 420);
+  const buttonScale = Math.min(Math.max(columnWidth / buttonBaseWidth, 0.74), 1);
+  const buttonHeight = buttonBaseHeight * buttonScale;
+  const cardToRestartGap = isMobilePortrait ? 24 : 30;
+  const restartToHomeGap = isMobilePortrait ? 18 : 22;
+  const stackHeight = cardHeight + cardToRestartGap + buttonHeight + restartToHomeGap + buttonHeight;
+  const preferredTop = Math.round(boardTop + boardSize * 0.5 - cardHeight * 0.5);
+  const cardTop = Math.min(
+    Math.max(preferredTop, safeTop),
+    height - safeBottom - stackHeight,
+  );
+  const centerY = cardTop + cardHeight * 0.5;
+  const cardBottom = cardTop + cardHeight;
+  const restartButtonY = cardBottom + cardToRestartGap + buttonHeight * 0.5;
+  const homeButtonY = restartButtonY + buttonHeight * 0.5 + restartToHomeGap + buttonHeight * 0.5;
+  const homeButtonBottom = homeButtonY + buttonHeight * 0.5;
+  const requiredHeight = stackHeight + safeBottom;
+
+  return {
+    safeTop,
+    safeBottom,
+    cardWidth,
+    cardHeight,
+    requiredHeight,
+    centerY,
+    cardTop,
+    cardBottom,
+    buttonScale,
+    buttonHeight,
+    restartButtonY,
+    homeButtonY,
+    homeButtonBottom,
+  };
+}
+
 export function computeBottomControlLayout({
   width,
   height,

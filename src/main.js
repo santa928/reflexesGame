@@ -2,6 +2,8 @@ import { buildArcadeButtonSpec, hexToNumber } from "./buttonStyle.js";
 import {
   GAME_MODES,
   NEON_THEME,
+  computeFinishOverlayLayout,
+  computeHomeScreenLayout,
   computeHudLayout,
   computeLevelBannerLayout,
   computePauseMenuLayout,
@@ -386,10 +388,24 @@ class GameScene extends Phaser.Scene {
       depth: 46,
     });
 
+    this.homeSoundButton = this.createButton({
+      kind: "sound",
+      label: this.getSoundLabel(),
+      onPress: () => this.toggleSound(),
+      depth: 46,
+    });
+
     this.restartButton = this.createButton({
       kind: "start",
       label: "もういちど",
       onPress: () => this.startGame(),
+      depth: 46,
+    });
+
+    this.finishHomeButton = this.createButton({
+      kind: "start",
+      label: "おうちへ",
+      onPress: () => this.goHome(),
       depth: 46,
     });
 
@@ -472,7 +488,9 @@ class GameScene extends Phaser.Scene {
       ["buttonHomePlay", "game-ui-text game-ui-button-label"],
       ["buttonHomeNormal", "game-ui-text game-ui-button-label"],
       ["buttonHomeSerious", "game-ui-text game-ui-button-label"],
+      ["buttonHomeSound", "game-ui-text game-ui-button-label"],
       ["buttonRestart", "game-ui-text game-ui-button-label"],
+      ["buttonFinishHome", "game-ui-text game-ui-button-label"],
       ["buttonPause", "game-ui-text game-ui-button-label"],
       ["buttonMenuContinue", "game-ui-text game-ui-button-label"],
       ["buttonMenuSound", "game-ui-text game-ui-button-label"],
@@ -488,7 +506,9 @@ class GameScene extends Phaser.Scene {
     this.homePlayButton.domLabelKey = "buttonHomePlay";
     this.homeNormalModeButton.domLabelKey = "buttonHomeNormal";
     this.homeSeriousModeButton.domLabelKey = "buttonHomeSerious";
+    this.homeSoundButton.domLabelKey = "buttonHomeSound";
     this.restartButton.domLabelKey = "buttonRestart";
+    this.finishHomeButton.domLabelKey = "buttonFinishHome";
     this.pauseButton.domLabelKey = "buttonPause";
     this.menuContinueButton.domLabelKey = "buttonMenuContinue";
     this.menuSoundButton.domLabelKey = "buttonMenuSound";
@@ -510,7 +530,9 @@ class GameScene extends Phaser.Scene {
       this.homePlayButton.labelNode,
       this.homeNormalModeButton.labelNode,
       this.homeSeriousModeButton.labelNode,
+      this.homeSoundButton.labelNode,
       this.restartButton.labelNode,
+      this.finishHomeButton.labelNode,
       this.pauseButton.labelNode,
       this.menuContinueButton.labelNode,
       this.menuSoundButton.labelNode,
@@ -556,7 +578,9 @@ class GameScene extends Phaser.Scene {
     this.setDomVisible("buttonHomePlay", isHome);
     this.setDomVisible("buttonHomeNormal", isHome);
     this.setDomVisible("buttonHomeSerious", isHome);
+    this.setDomVisible("buttonHomeSound", isHome);
     this.setDomVisible("buttonRestart", isFinished && !showMenu);
+    this.setDomVisible("buttonFinishHome", isFinished && !showMenu);
     this.setDomVisible("buttonPause", showGameChrome && !showMenu && !isCountdown);
     this.setDomVisible("buttonMenuContinue", showMenu);
     this.setDomVisible("buttonMenuSound", showMenu);
@@ -702,7 +726,9 @@ class GameScene extends Phaser.Scene {
       this.homePlayButton,
       this.homeNormalModeButton,
       this.homeSeriousModeButton,
+      this.homeSoundButton,
       this.restartButton,
+      this.finishHomeButton,
       this.pauseButton,
       this.menuContinueButton,
       this.menuSoundButton,
@@ -916,6 +942,7 @@ class GameScene extends Phaser.Scene {
     this.homeSeriousModeButton.selected = this.selectedMode === "serious";
     this.updateButtonVisual(this.homeNormalModeButton, getGameModeCopy(GAME_MODES.normal).label);
     this.updateButtonVisual(this.homeSeriousModeButton, getGameModeCopy(GAME_MODES.serious).label);
+    this.updateButtonVisual(this.homeSoundButton, this.getSoundLabel());
     this.syncDomFromPhaser("homeHeadline", this.homeHeadline, {
       glowColor: "#22d3ee",
       glowBlur: 16,
@@ -995,6 +1022,8 @@ class GameScene extends Phaser.Scene {
     this.updateButtonVisual(this.menuContinueButton, copy.continueLabel);
     this.updateButtonVisual(this.menuSoundButton, copy.soundLabel);
     this.updateButtonVisual(this.menuHomeButton, copy.homeLabel);
+    this.updateButtonVisual(this.homeSoundButton, copy.soundLabel);
+    this.updateButtonVisual(this.finishHomeButton, copy.homeLabel);
     this.syncAllDomText();
   }
 
@@ -1060,10 +1089,12 @@ class GameScene extends Phaser.Scene {
     this.setButtonVisible(this.homePlayButton, isHome);
     this.setButtonVisible(this.homeNormalModeButton, isHome);
     this.setButtonVisible(this.homeSeriousModeButton, isHome);
+    this.setButtonVisible(this.homeSoundButton, isHome);
 
     this.refreshOverlayCopy();
     this.overlayContainer.setVisible((isCountdown || isFinished) && !showMenu);
     this.setButtonVisible(this.restartButton, isFinished && !showMenu);
+    this.setButtonVisible(this.finishHomeButton, isFinished && !showMenu);
 
     this.setButtonVisible(this.pauseButton, showGameChrome && !showMenu && !isCountdown);
 
@@ -1852,14 +1883,10 @@ class GameScene extends Phaser.Scene {
     const badgeScale = Phaser.Math.Clamp(columnWidth / 520, 0.9, 1.08);
     const overlayHeadlineSize = Phaser.Math.Clamp(Math.round(w * 0.075), 28, 34);
     const overlaySublineSize = Phaser.Math.Clamp(Math.round(w * 0.042), 16, 20);
-    const overlayCardWidth = Math.min(columnWidth * 0.96, 420);
-    const ctaScale = Phaser.Math.Clamp(columnWidth / 380, 0.74, 1);
     this.scoreText.setFontSize(scoreFontSize);
     this.timeText.setFontSize(timeFontSize);
     this.statusText.setFontSize(statusFontSize);
     this.levelBadgeText.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.038), 18, 24));
-    this.overlayCardBackground.setSize(overlayCardWidth, 176);
-    this.homeCardBackground.setSize(Math.min(columnWidth * 0.98, 430), 254);
     this.homeHeadline.setFontSize(overlayHeadlineSize);
     this.homeSubline.setFontSize(overlaySublineSize + 2);
     this.homeModeTitle.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.04), 16, 20));
@@ -1909,22 +1936,48 @@ class GameScene extends Phaser.Scene {
     }
     this.levelBannerBackground.setSize(levelBannerLayout.width, levelBannerLayout.height);
     this.levelBanner.setPosition(hudX, levelBannerLayout.y);
-    this.overlayContainer.setPosition(hudX, boardTop + boardSize * 0.5);
-    this.setButtonBaseScale(this.homePlayButton, ctaScale);
-    this.setButtonBaseScale(this.restartButton, ctaScale);
-    this.setButtonPosition(this.restartButton, hudX, this.overlayContainer.y + 128);
+    const finishLayout = computeFinishOverlayLayout({
+      width: w,
+      height: h,
+      columnWidth,
+      boardTop,
+      boardSize,
+      headlineHeight: this.overlayHeadline.height,
+      sublineHeight: this.overlaySubline.height,
+      buttonBaseWidth: this.restartButton.baseWidth,
+      buttonBaseHeight: this.restartButton.baseHeight,
+    });
+    this.overlayCardBackground.setSize(finishLayout.cardWidth, finishLayout.cardHeight);
+    this.overlayContainer.setPosition(hudX, finishLayout.centerY);
+    this.setButtonBaseScale(this.restartButton, finishLayout.buttonScale);
+    this.setButtonBaseScale(this.finishHomeButton, finishLayout.buttonScale);
+    this.setButtonPosition(this.restartButton, hudX, finishLayout.restartButtonY);
+    this.setButtonPosition(this.finishHomeButton, hudX, finishLayout.homeButtonY);
 
-    const homeCenterY = Math.max(282, Math.round(h * 0.36));
-    this.homeContainer.setPosition(hudX, homeCenterY);
-    const modeButtonScale = Phaser.Math.Clamp(columnWidth / 540, 0.68, 0.84);
-    const modeButtonGap = Math.min(28, columnWidth * 0.04);
-    const modeRowY = homeCenterY + 162;
-    const modeRowHalf = this.homeNormalModeButton.baseWidth * modeButtonScale * 0.5 + modeButtonGap * 0.5;
-    this.setButtonBaseScale(this.homeNormalModeButton, modeButtonScale);
-    this.setButtonBaseScale(this.homeSeriousModeButton, modeButtonScale);
-    this.setButtonPosition(this.homeNormalModeButton, hudX - modeRowHalf, modeRowY);
-    this.setButtonPosition(this.homeSeriousModeButton, hudX + modeRowHalf, modeRowY);
-    this.setButtonPosition(this.homePlayButton, hudX, modeRowY + 96);
+    const homeLayout = computeHomeScreenLayout({
+      width: w,
+      height: h,
+      columnWidth,
+      buttonBaseWidth: this.homePlayButton.baseWidth,
+      buttonBaseHeight: this.homePlayButton.baseHeight,
+      modeButtonBaseWidth: this.homeNormalModeButton.baseWidth,
+      modeButtonBaseHeight: this.homeNormalModeButton.baseHeight,
+      titleHeight: this.homeHeadline.height,
+      sublineHeight: this.homeSubline.height,
+      sectionLabelHeight: this.homeModeTitle.height,
+      hintHeight: this.homeModeHint.height,
+    });
+    this.homeCardBackground.setSize(homeLayout.cardWidth, homeLayout.cardHeight);
+    this.homeContainer.setPosition(hudX, homeLayout.cardCenterY);
+    const modeRowHalf = homeLayout.modeButtonWidth * 0.5 + homeLayout.modeButtonGap * 0.5;
+    this.setButtonBaseScale(this.homeNormalModeButton, homeLayout.modeButtonScale);
+    this.setButtonBaseScale(this.homeSeriousModeButton, homeLayout.modeButtonScale);
+    this.setButtonBaseScale(this.homeSoundButton, homeLayout.soundButtonScale);
+    this.setButtonBaseScale(this.homePlayButton, homeLayout.playButtonScale);
+    this.setButtonPosition(this.homeNormalModeButton, hudX - modeRowHalf, homeLayout.modeRowY);
+    this.setButtonPosition(this.homeSeriousModeButton, hudX + modeRowHalf, homeLayout.modeRowY);
+    this.setButtonPosition(this.homeSoundButton, hudX, homeLayout.soundButtonY);
+    this.setButtonPosition(this.homePlayButton, hudX, homeLayout.playButtonY);
 
     const pauseLayout = computeTopRightControlLayout({
       width: w,
@@ -2087,11 +2140,13 @@ class GameScene extends Phaser.Scene {
         home: this.homePlayButton?.labelNode?.text ?? "",
         normalMode: this.homeNormalModeButton?.labelNode?.text ?? "",
         seriousMode: this.homeSeriousModeButton?.labelNode?.text ?? "",
+        homeSound: this.homeSoundButton?.labelNode?.text ?? "",
         pause: this.pauseButton?.labelNode?.text ?? "",
         continue: this.menuContinueButton?.labelNode?.text ?? "",
         sound: this.menuSoundButton?.labelNode?.text ?? "",
         menuHome: this.menuHomeButton?.labelNode?.text ?? "",
         restart: this.restartButton?.labelNode?.text ?? "",
+        finishHome: this.finishHomeButton?.labelNode?.text ?? "",
       },
     };
   }

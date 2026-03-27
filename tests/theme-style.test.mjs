@@ -5,6 +5,8 @@ import {
   GAME_MODES,
   NEON_THEME,
   computeBottomControlLayout,
+  computeFinishOverlayLayout,
+  computeHomeScreenLayout,
   computeHudLayout,
   computeLevelBannerLayout,
   computePauseMenuLayout,
@@ -163,6 +165,47 @@ test("top-right pause control keeps a safe tap zone on mobile portrait", () => {
   assert.equal(layout.buttonScale > 0.5, true);
   assert.equal(layout.hitAreaWidth >= 60, true);
   assert.equal(layout.hitAreaHeight >= 60, true);
+});
+
+test("home screen layout keeps mode, sound, and play rows inside the card", () => {
+  const layout = computeHomeScreenLayout({
+    width: 390,
+    height: 844,
+    columnWidth: 358,
+    buttonBaseWidth: 280,
+    buttonBaseHeight: 88,
+    modeButtonBaseWidth: 220,
+    modeButtonBaseHeight: 76,
+    titleHeight: 34,
+    sublineHeight: 20,
+    sectionLabelHeight: 18,
+    hintHeight: 18,
+  });
+
+  assert.equal(layout.requiredHeight <= 844, true);
+  assert.equal(layout.modeRowY < layout.soundButtonY, true);
+  assert.equal(layout.soundButtonY < layout.playButtonY, true);
+  assert.equal(layout.playButtonBottom <= 844 - layout.safeBottom, true);
+  assert.equal(layout.cardBottom <= 844 - layout.safeBottom, true);
+});
+
+test("finish overlay layout stacks restart and home buttons within the viewport", () => {
+  const layout = computeFinishOverlayLayout({
+    width: 390,
+    height: 844,
+    columnWidth: 358,
+    boardTop: 270,
+    boardSize: 358,
+    headlineHeight: 34,
+    sublineHeight: 20,
+    buttonBaseWidth: 280,
+    buttonBaseHeight: 88,
+  });
+
+  assert.equal(layout.requiredHeight <= 844, true);
+  assert.equal(layout.restartButtonY < layout.homeButtonY, true);
+  assert.equal(layout.homeButtonBottom <= 844 - layout.safeBottom, true);
+  assert.equal(layout.cardBottom <= 844 - layout.safeBottom, true);
 });
 
 test("hud layout keeps the level badge inside the panel on mobile portrait", () => {
