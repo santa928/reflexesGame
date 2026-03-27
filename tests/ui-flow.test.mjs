@@ -29,6 +29,8 @@ test("main scene defines home screen and pause menu state transitions", () => {
   assert.match(source, /startCountdownTimer/);
   assert.match(source, /beginGameplayRound\(\)/);
   assert.match(source, /updateCountdownUi\(\)/);
+  assert.match(source, /getContinuingHitStatusCopy\(this\.activeTargets\.length\)/);
+  assert.doesNotMatch(source, /`あと \$\{this\.activeTargets\.length\}こ!`/);
   assert.match(source, /const levelBannerLayout = computeLevelBannerLayout\(/);
   assert.match(source, /this\.levelBanner\.setPosition\(hudX,\s*levelBannerLayout\.y\)/);
   assert.match(source, /getSnapshotMode\(\)/);

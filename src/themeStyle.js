@@ -61,6 +61,8 @@ const MENU_COPY = Object.freeze({
   homeLabel: "おうちへ",
 });
 
+const CONTINUING_HIT_STATUS_COPY = "つぎの ひかりも タッチ!";
+
 const GAME_MODE_COPY = Object.freeze({
   [GAME_MODES.normal]: Object.freeze({
     key: GAME_MODES.normal,
@@ -99,6 +101,14 @@ export function getStartCountdownCopy(remainingMs) {
 export function formatStartCountdownStatus(remainingMs) {
   const secondsLeft = Math.max(1, Math.ceil(Math.max(0, remainingMs) / 1000));
   return `${secondsLeft}びょうごに スタート!`;
+}
+
+/**
+ * Return a follow-up prompt only when another lit target is still waiting on
+ * the board. This avoids implying a simultaneous multi-clear rule.
+ */
+export function getContinuingHitStatusCopy(remainingTargets) {
+  return remainingTargets > 0 ? CONTINUING_HIT_STATUS_COPY : "";
 }
 
 export function getPauseMenuCopy(soundEnabled) {

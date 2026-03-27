@@ -11,6 +11,7 @@ import {
   computeStatusTextLayout,
   computeTopRightControlLayout,
   formatBreachLevel,
+  getContinuingHitStatusCopy,
   formatStartCountdownStatus,
   formatUptime,
   getGameModeCopy,
@@ -105,6 +106,12 @@ test("hud formatting uses breach level and uptime strings", () => {
   assert.equal(formatBreachLevel(7), "てんすう 07");
   assert.equal(formatUptime(30000), "じかん 30.0びょう");
   assert.equal(formatUptime(4500), "じかん 4.5びょう");
+});
+
+test("continuing hit status copy avoids remaining-count framing", () => {
+  assert.equal(getContinuingHitStatusCopy(2), "つぎの ひかりも タッチ!");
+  assert.equal(getContinuingHitStatusCopy(1), "つぎの ひかりも タッチ!");
+  assert.equal(getContinuingHitStatusCopy(0), "");
 });
 
 test("bottom controls keep healthy margins on mobile portrait", () => {

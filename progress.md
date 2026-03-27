@@ -1,6 +1,13 @@
 Original prompt: どうぶつテーマ化と段階難化の改善プランを実装し、Tier3以降は「2匹出る / 1匹押したらその1匹だけ消えて +1 / もう1匹は残る」仕様にする。
 
 2026-03-28
+- ユーザー指摘の「コンボ継続中に `あと N こ!` が出る違和感」に対応するため、`docs/plans/2026-03-28-combo-status-copy-design.md` と `docs/plans/2026-03-28-combo-status-copy-implementation.md` を追加し、残数訴求をやめて逐次行動ガイドへ寄せる方針と手順を記録した。
+- Gemini 相談は `run_gemini.sh` 実行まではできたが、このターンでは設計回答が返らず取得不能だったため、失敗証跡を残して Codex 側の最小差分設計へ切り替えた。
+- `tests/theme-style.test.mjs` と `tests/ui-flow.test.mjs` を RED -> GREEN で更新し、継続ヒット時 helper が `つぎの ひかりも タッチ!` を返すこと、`main.js` が旧 `あと ${this.activeTargets.length}こ!` を使わないことを固定した。
+- `src/themeStyle.js` に `getContinuingHitStatusCopy()` を追加し、`src/main.js` のヒット直後 status 文言は helper 経由で決めるよう変更した。これにより、盤面に残りターゲットがあっても「複数同時消しを要求している」印象を避けている。
+- Docker 上で `docker run --rm -v "$PWD":/app -w /app node:20 node --test tests/theme-style.test.mjs tests/ui-flow.test.mjs` を先に FAIL させ、その後同コマンドを再実行して 19 件すべて通過することを確認した。
+- 続けて `docker run --rm -v "$PWD":/app -w /app node:20 sh -lc 'node --test tests/*.test.mjs && node --check src/main.js'` を実行し、37 件すべて通過することを確認した。
+- Docker の `nginx:alpine` で `http://127.0.0.1:18081` を配信し、fresh URL + in-memory Playwright で `390x844` と `768x1024` を確認した。継続ヒット時メッセージを検証用 state で固定したうえで `tmp/ui-check/combo-copy-390.png` と `tmp/ui-check/combo-copy-768.png` を保存し、どちらも `つぎの ひかりも タッチ!` が HUD 下の帯に収まり、盤面や HUD と重ならないことを目視確認した。
 - `https://github.com/santa928/reflexesGame/issues/3` の「画質が悪い」について root cause を再調査した。Playwright で `devicePixelRatio=2` を再現しても `canvas.width == clientWidth` / `drawingBufferWidth == clientWidth` のままで、Phaser 3.70.0 側の HighDPI 制約が主因であることを確認した。
 - `docs/plans/2026-03-28-render-quality-design.md` と `docs/plans/2026-03-28-render-quality-implementation.md` を追加し、全面リプレースではなく「文字 UI を DOM overlay 化する」緩和策を要件・手順として明文化した。
 - `index.html` に `#game-ui-overlay` を追加し、`styles.css` に overlay 用レイヤとネオン文字スタイルを追加した。`src/main.js` では Phaser `Text` を測定専用に残しつつ、HUD / ホーム / 終了 / メニュー / ボタンラベルを DOM 側へ同期するようにした。

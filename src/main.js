@@ -10,6 +10,7 @@ import {
   formatBreachLevel,
   formatStartCountdownStatus,
   formatUptime,
+  getContinuingHitStatusCopy,
   getGameModeCopy,
   getOverlayCopy,
   getPauseMenuCopy,
@@ -1406,15 +1407,16 @@ class GameScene extends Phaser.Scene {
       this.playLevelUpFeedback();
     }
 
+    const continuingHitCopy = getContinuingHitStatusCopy(this.activeTargets.length);
     this.setStatusText(
       increasedTier
         ? "レベルアップ!"
-        : this.activeTargets.length > 0
-          ? `あと ${this.activeTargets.length}こ!`
+        : continuingHitCopy
+          ? continuingHitCopy
           : Phaser.Utils.Array.GetRandom(GAME_CONFIG.statusMessages.hit),
       increasedTier
         ? "#fde047"
-        : this.activeTargets.length > 0
+        : continuingHitCopy
           ? "#a5f3fc"
           : NEON_THEME.palette.success,
     );
