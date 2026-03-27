@@ -3,6 +3,7 @@ import {
   GAME_MODES,
   NEON_THEME,
   computeHudLayout,
+  computeLevelBannerLayout,
   computePauseMenuLayout,
   computeStatusTextLayout,
   computeTopRightControlLayout,
@@ -264,11 +265,11 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5, 0).setDepth(18);
     this.statusText.setShadow(0, 0, "#22d3ee", 8, false, true);
 
-    this.levelBannerBackground = this.add.rectangle(0, 0, 360, 102, 0x081121, 0.92)
+    this.levelBannerBackground = this.add.rectangle(0, 0, 280, 44, 0x081121, 0.92)
       .setStrokeStyle(3, hexToNumber(NEON_THEME.palette.level), 0.95);
     this.levelBannerText = this.add.text(0, 0, "レベルアップ!", {
       fontFamily: UI_FONT_STACK,
-      fontSize: "38px",
+      fontSize: "26px",
       color: "#fef08a",
       fontStyle: "700",
     }).setOrigin(0.5);
@@ -1276,6 +1277,7 @@ class GameScene extends Phaser.Scene {
 
     this.flashScreen("#facc15", 0.16, 160);
     this.levelBannerText.setText("レベルアップ!");
+    this.statusText.setVisible(false);
     this.levelBanner.setVisible(true).setAlpha(0).setScale(0.7);
     this.levelBannerTween = this.tweens.add({
       targets: this.levelBanner,
@@ -1287,6 +1289,7 @@ class GameScene extends Phaser.Scene {
       hold: 260,
       onComplete: () => {
         this.levelBanner.setVisible(false).setAlpha(0).setScale(0.7);
+        this.statusText.setVisible(this.screenMode !== "home");
         this.levelBannerTween = null;
       },
     });
@@ -1500,7 +1503,6 @@ class GameScene extends Phaser.Scene {
     const overlayHeadlineSize = Phaser.Math.Clamp(Math.round(w * 0.075), 28, 34);
     const overlaySublineSize = Phaser.Math.Clamp(Math.round(w * 0.042), 16, 20);
     const overlayCardWidth = Math.min(columnWidth * 0.96, 420);
-    const levelBannerWidth = Math.min(columnWidth * 0.92, 440);
     const ctaScale = Phaser.Math.Clamp(columnWidth / 380, 0.74, 1);
     this.scoreText.setFontSize(scoreFontSize);
     this.timeText.setFontSize(timeFontSize);
@@ -1512,8 +1514,6 @@ class GameScene extends Phaser.Scene {
     this.homeSubline.setFontSize(overlaySublineSize + 2);
     this.homeModeTitle.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.04), 16, 20));
     this.homeModeHint.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.036), 14, 18));
-    this.levelBannerBackground.setSize(levelBannerWidth, 102);
-    this.levelBannerText.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.045), 24, 30));
     this.menuTitle.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.05), 24, 30));
     this.levelBadge.setScale(badgeScale);
 
@@ -1545,7 +1545,20 @@ class GameScene extends Phaser.Scene {
       });
     }
     this.statusText.setPosition(hudX, statusLayout.y, 0);
-    this.levelBanner.setPosition(hudX, boardTop + boardSize * 0.44);
+    const levelBannerLayout = computeLevelBannerLayout({
+      width: w,
+      hudBottom: hudLayout.cardBottom,
+      boardTop,
+      textHeight: this.levelBannerText.height,
+    });
+    const baseLevelBannerFontSize = Phaser.Math.Clamp(Math.round(w * 0.04), 20, 26);
+    if (levelBannerLayout.textScale < 0.999) {
+      this.levelBannerText.setFontSize(Math.max(18, Math.floor(baseLevelBannerFontSize * levelBannerLayout.textScale)));
+    } else {
+      this.levelBannerText.setFontSize(baseLevelBannerFontSize);
+    }
+    this.levelBannerBackground.setSize(levelBannerLayout.width, levelBannerLayout.height);
+    this.levelBanner.setPosition(hudX, levelBannerLayout.y);
     this.overlayContainer.setPosition(hudX, boardTop + boardSize * 0.5);
     this.setButtonBaseScale(this.homePlayButton, ctaScale);
     this.setButtonBaseScale(this.restartButton, ctaScale);

@@ -10,6 +10,7 @@ const mainPath = path.resolve(__dirname, "../src/main.js");
 test("main scene defines home screen and pause menu state transitions", () => {
   const source = fs.readFileSync(mainPath, "utf8");
 
+  assert.match(source, /computeLevelBannerLayout/);
   assert.match(source, /this\.screenMode = "home"/);
   assert.match(source, /this\.screenMode = "countdown"/);
   assert.match(source, /this\.selectedMode = "normal"/);
@@ -28,6 +29,8 @@ test("main scene defines home screen and pause menu state transitions", () => {
   assert.match(source, /startCountdownTimer/);
   assert.match(source, /beginGameplayRound\(\)/);
   assert.match(source, /updateCountdownUi\(\)/);
+  assert.match(source, /const levelBannerLayout = computeLevelBannerLayout\(/);
+  assert.match(source, /this\.levelBanner\.setPosition\(hudX,\s*levelBannerLayout\.y\)/);
   assert.match(source, /getSnapshotMode\(\)/);
   assert.match(source, /selectedMode: this\.selectedMode/);
 });

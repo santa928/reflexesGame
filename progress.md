@@ -1,6 +1,12 @@
 Original prompt: どうぶつテーマ化と段階難化の改善プランを実装し、Tier3以降は「2匹出る / 1匹押したらその1匹だけ消えて +1 / もう1匹は残る」仕様にする。
 
 2026-03-27
+- `https://github.com/santa928/reflexesGame/issues/2` 向けに `docs/plans/2026-03-27-levelup-banner-position-design.md` と `docs/plans/2026-03-27-levelup-banner-position-implementation.md` を追加し、盤面中央のレベルアップ表示を HUD 直下の通知帯へ移す要件と手順を記録した。
+- `src/themeStyle.js` に `computeLevelBannerLayout()` を追加し、HUD 下端と盤面上端の実寸から通知帯の幅・高さ・Y 座標を計算するようにした。狭い帯域では少しだけ HUD 側へ食い込ませ、可読性を優先している。
+- `src/main.js` では `levelBanner` の初期サイズを通知帯向けへ縮小し、`layout()` で helper の返す値を使って HUD 直下へ再配置するよう更新した。通知帯表示中は `statusText` を一時的に隠して、盤面上のノイズと重複文言を避けている。
+- `tests/theme-style.test.mjs` と `tests/ui-flow.test.mjs` を RED -> GREEN で更新し、通知帯 helper の収まり条件と `main.js` が helper 経由で `levelBanner` を配置することをコード上で固定した。
+- Docker 上で `node --test tests/theme-style.test.mjs tests/ui-flow.test.mjs` を最初に FAIL させ、その後 `docker run --rm -v \"$PWD\":/app -w /app node:20 sh -lc 'node --test tests/*.test.mjs && node --check src/main.js'` を実行して 33 件すべて通過することを確認した。
+- Playwright では service worker / cache を削除した fresh page から `390x844` と `768x1024` の両方でレベルアップ通知を強制表示し、`tmp/ui-check/level-banner-390.png` と `tmp/ui-check/level-banner-768.png` を目視確認した。数値確認では `390x844` で `bannerBottom=265.59 < zoneTop=282.69`、`768x1024` で `bannerBottom=295.02 < zoneTop=304.55` となり、最上段セルの上端より上に通知帯が収まっている。
 - `https://github.com/santa928/reflexesGame/issues/1` 向けに `docs/plans/2026-03-27-start-countdown-design.md` と `docs/plans/2026-03-27-start-countdown-implementation.md` を追加し、開始前 3 秒カウントダウンの要件・状態遷移・実装手順を記録した。
 - `src/themeStyle.js` に `countdown` overlay copy と `getStartCountdownCopy()` / `formatStartCountdownStatus()` を追加し、`3 / 2 / 1` 表示と HUD 補助文言の参照元をそろえた。
 - `src/main.js` に `countdown` 状態、`startCountdownTimer` / `startCountdownEndAt`、`prepareRoundState()`、`beginGameplayRound()`、`updateCountdownUi()` を追加し、`home -> countdown -> playing` と `finished -> countdown -> playing` の導線を実装した。

@@ -6,6 +6,7 @@ import {
   NEON_THEME,
   computeBottomControlLayout,
   computeHudLayout,
+  computeLevelBannerLayout,
   computePauseMenuLayout,
   computeStatusTextLayout,
   computeTopRightControlLayout,
@@ -196,6 +197,33 @@ test("status text layout shrinks before overlapping the board on tablet portrait
   assert.equal(layout.effectiveTextHeight <= layout.maxTextHeight, true);
   assert.equal(layout.bottom <= 310.48 - layout.bottomGap, true);
   assert.equal(layout.y >= 266.672, true);
+});
+
+test("level banner layout stays above the board on mobile portrait", () => {
+  const layout = computeLevelBannerLayout({
+    width: 390,
+    hudBottom: 212,
+    boardTop: 270,
+    textHeight: 28,
+  });
+
+  assert.equal(layout.y >= 212 + layout.topGap, true);
+  assert.equal(layout.bottom <= 270 - layout.bottomGap, true);
+  assert.equal(layout.width <= Math.min(390 - 32, 320), true);
+  assert.equal(layout.textScale > 0, true);
+});
+
+test("level banner layout shrinks before touching the board on tablet portrait", () => {
+  const layout = computeLevelBannerLayout({
+    width: 768,
+    hudBottom: 266.672,
+    boardTop: 310.48,
+    textHeight: 33.803,
+  });
+
+  assert.equal(layout.textScale < 1, true);
+  assert.equal(layout.bottom <= 310.48 - layout.bottomGap, true);
+  assert.equal(layout.height >= layout.effectiveTextHeight, true);
 });
 
 test("pause menu layout keeps all three buttons inside the card on mobile portrait", () => {

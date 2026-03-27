@@ -195,6 +195,53 @@ export function computeStatusTextLayout({
 }
 
 /**
+ * Compute a compact toast-style level-up banner that lives below the HUD and
+ * stays above the board even on tight portrait screens.
+ */
+export function computeLevelBannerLayout({
+  width,
+  hudBottom,
+  boardTop,
+  textHeight,
+}) {
+  const isMobilePortrait = width < 480;
+  const topGap = isMobilePortrait ? 8 : 10;
+  const bottomGap = isMobilePortrait ? 8 : 10;
+  const verticalPadding = isMobilePortrait ? 6 : 8;
+  const availableHeight = Math.max(0, boardTop - hudBottom - topGap - bottomGap);
+  const maxTextHeight = Math.max(0, availableHeight - verticalPadding * 2);
+  const textScale = textHeight > 0 && maxTextHeight > 0
+    ? Math.min(1, maxTextHeight / textHeight)
+    : 1;
+  const effectiveTextHeight = textHeight * textScale;
+  const desiredHeight = effectiveTextHeight + verticalPadding * 2;
+  const slackHeight = Math.max(16, availableHeight);
+  const maxHudOverlap = isMobilePortrait ? 12 : 18;
+  const targetHeight = Math.max(isMobilePortrait ? 28 : 24, desiredHeight);
+  const height = Math.min(targetHeight, slackHeight + maxHudOverlap);
+  const overlapIntoHud = Math.max(0, height - slackHeight);
+  const widthPadding = isMobilePortrait ? 32 : 120;
+  const widthCap = isMobilePortrait ? 280 : 320;
+  const bannerWidth = Math.min(width - widthPadding, widthCap);
+  const y = hudBottom + topGap + height * 0.5 - overlapIntoHud;
+
+  return {
+    topGap,
+    bottomGap,
+    verticalPadding,
+    availableHeight,
+    maxTextHeight,
+    textScale,
+    effectiveTextHeight,
+    height,
+    overlapIntoHud,
+    width: Math.max(180, Math.floor(bannerWidth)),
+    y,
+    bottom: y + height * 0.5,
+  };
+}
+
+/**
  * Compute a pause menu card that fits its title and three buttons inside the
  * visible viewport, instead of relying on fixed card heights and guessed gaps.
  */
