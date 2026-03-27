@@ -4,12 +4,15 @@ import {
   NEON_THEME,
   computeHudLayout,
   computePauseMenuLayout,
+  computeStatusTextLayout,
   computeTopRightControlLayout,
   formatBreachLevel,
+  formatStartCountdownStatus,
   formatUptime,
   getGameModeCopy,
   getOverlayCopy,
   getPauseMenuCopy,
+  getStartCountdownCopy,
   getTimeStyle,
 } from "./themeStyle.js";
 import {
@@ -22,6 +25,7 @@ import { NODE_VARIANTS, buildNodeTargetSpec } from "./targetStyle.js";
 const GAME_CONFIG = Object.freeze({
   gridSize: 3,
   gameDurationMs: 30000,
+  startCountdownMs: 3000,
   countdownTickMs: 100,
   roundMsInitial: 1800,
   roundMsStep: 40,
@@ -131,11 +135,13 @@ class GameScene extends Phaser.Scene {
     this.spawnReservationCount = 0;
     this.gameTimer = null;
     this.countdownTickTimer = null;
+    this.startCountdownTimer = null;
     this.isRunning = false;
     this.score = 0;
     this.tier = 1;
     this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
     this.countdownEndAt = 0;
+    this.startCountdownEndAt = 0;
     this.roundMsCurrent = GAME_CONFIG.roundMsInitial;
     this.audioEnabled = AUDIO_CONFIG.enabledByDefault;
     this.currentTierConfig = GAME_CONFIG.tierConfigs[0];
@@ -171,6 +177,7 @@ class GameScene extends Phaser.Scene {
     this.currentTierConfig = this.getTierConfig(1);
     this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
     this.countdownEndAt = 0;
+    this.startCountdownEndAt = 0;
     this.roundMsCurrent = this.getBaseRoundMs(this.currentTierConfig);
     this.isRunning = false;
     this.spawnTimers = [];
@@ -629,10 +636,41 @@ class GameScene extends Phaser.Scene {
     this.updateButtonVisual(this.homeSeriousModeButton, getGameModeCopy(GAME_MODES.serious).label);
   }
 
-  updateFinishedCopy() {
+  refreshOverlayCopy() {
+    if (this.screenMode === "countdown") {
+      const copy = getStartCountdownCopy(this.startCountdownEndAt - this.time.now);
+      const headlineSize = Phaser.Math.Clamp(Math.round(this.scale.width * 0.05), 22, 28);
+      const countSize = Phaser.Math.Clamp(Math.round(this.scale.width * 0.18), 68, 100);
+      this.overlayHeadline
+        .setText(copy.headline)
+        .setPosition(0, -42)
+        .setFontSize(headlineSize)
+        .setColor("#bae6fd")
+        .setShadow(0, 0, "#22d3ee", 14, false, true);
+      this.overlaySubline
+        .setText(copy.subline)
+        .setPosition(0, 22)
+        .setFontSize(countSize)
+        .setColor("#f8fafc")
+        .setShadow(0, 0, "#22d3ee", 18, false, true);
+      return;
+    }
+
     const copy = getOverlayCopy("finished");
-    this.overlayHeadline.setText(copy.headline);
-    this.overlaySubline.setText(`${copy.subline}: ${String(this.score).padStart(2, "0")}`);
+    const headlineSize = Phaser.Math.Clamp(Math.round(this.scale.width * 0.075), 28, 34);
+    const sublineSize = Phaser.Math.Clamp(Math.round(this.scale.width * 0.042), 16, 20);
+    this.overlayHeadline
+      .setText(copy.headline)
+      .setPosition(0, -28)
+      .setFontSize(headlineSize)
+      .setColor("#f8fafc")
+      .setShadow(0, 0, "#22d3ee", 16, false, true);
+    this.overlaySubline
+      .setText(`${copy.subline}: ${String(this.score).padStart(2, "0")}`)
+      .setPosition(0, 34)
+      .setFontSize(sublineSize)
+      .setColor("#bae6fd")
+      .setShadow(0, 0, "#22d3ee", 10, false, true);
     this.updateButtonVisual(this.restartButton, copy.cta);
   }
 
@@ -689,6 +727,7 @@ class GameScene extends Phaser.Scene {
 
   refreshScreenUi() {
     const isHome = this.screenMode === "home";
+    const isCountdown = this.screenMode === "countdown";
     const isFinished = this.screenMode === "finished";
     const showGameChrome = !isHome;
     const showMenu = this.isMenuOpen;
@@ -706,11 +745,11 @@ class GameScene extends Phaser.Scene {
     this.setButtonVisible(this.homeNormalModeButton, isHome);
     this.setButtonVisible(this.homeSeriousModeButton, isHome);
 
-    this.updateFinishedCopy();
-    this.overlayContainer.setVisible(isFinished && !showMenu);
+    this.refreshOverlayCopy();
+    this.overlayContainer.setVisible((isCountdown || isFinished) && !showMenu);
     this.setButtonVisible(this.restartButton, isFinished && !showMenu);
 
-    this.setButtonVisible(this.pauseButton, showGameChrome && !showMenu);
+    this.setButtonVisible(this.pauseButton, showGameChrome && !showMenu && !isCountdown);
 
     this.menuDimmer.setVisible(showMenu);
     if (this.menuDimmer.input) {
@@ -729,7 +768,7 @@ class GameScene extends Phaser.Scene {
   }
 
   openPauseMenu() {
-    if (this.screenMode === "home" || this.isMenuOpen) {
+    if (this.screenMode === "home" || this.screenMode === "countdown" || this.isMenuOpen) {
       return;
     }
     this.wasRunningBeforeMenu = this.screenMode === "playing" && this.isRunning;
@@ -775,25 +814,57 @@ class GameScene extends Phaser.Scene {
     this.refreshScreenUi();
   }
 
-  startGame() {
+  prepareRoundState() {
     this.clearTimers();
     this.clearActiveTargets(false);
     this.isMenuOpen = false;
     this.wasRunningBeforeMenu = false;
-    this.isRunning = true;
-    this.screenMode = "playing";
+    this.isRunning = false;
     this.spawnReservationCount = 0;
     this.score = 0;
     this.tier = 1;
     this.currentTierConfig = this.getTierConfig(1);
     this.roundMsCurrent = this.getBaseRoundMs(this.currentTierConfig);
     this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
-    this.countdownEndAt = this.time.now + GAME_CONFIG.gameDurationMs;
+    this.countdownEndAt = 0;
+    this.startCountdownEndAt = 0;
     this.lastSpawnCellIndices = [];
     this.lastUrgentSecond = null;
+    this.nodeVariantPool = NODE_VARIANTS.map((variant) => variant.id);
     this.updateScoreText(false);
     this.updateTimeText();
     this.updateTierUi();
+  }
+
+  updateCountdownUi() {
+    if (this.screenMode !== "countdown") {
+      return;
+    }
+
+    const msLeft = Math.max(0, this.startCountdownEndAt - this.time.now);
+    if (msLeft <= 0) {
+      this.beginGameplayRound();
+      return;
+    }
+
+    this.refreshOverlayCopy();
+    this.setStatusText(formatStartCountdownStatus(msLeft), "#bae6fd");
+  }
+
+  beginGameplayRound() {
+    if (this.startCountdownTimer) {
+      this.startCountdownTimer.remove(false);
+      this.startCountdownTimer = null;
+    }
+    if (this.screenMode !== "countdown") {
+      return;
+    }
+
+    this.isRunning = true;
+    this.screenMode = "playing";
+    this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
+    this.countdownEndAt = this.time.now + GAME_CONFIG.gameDurationMs;
+    this.updateTimeText();
     this.setStatusText(`${getGameModeCopy(this.selectedMode).label}で スタート!`, NEON_THEME.palette.hud);
     this.refreshMenuCopy();
     this.refreshScreenUi();
@@ -805,6 +876,21 @@ class GameScene extends Phaser.Scene {
       callback: () => this.updateRemainingTime(),
     });
     this.ensureTargetCapacity();
+  }
+
+  startGame() {
+    this.prepareRoundState();
+    this.screenMode = "countdown";
+    this.startCountdownEndAt = this.time.now + GAME_CONFIG.startCountdownMs;
+    this.updateCountdownUi();
+    this.refreshMenuCopy();
+    this.refreshScreenUi();
+
+    this.startCountdownTimer = this.time.addEvent({
+      delay: GAME_CONFIG.countdownTickMs,
+      loop: true,
+      callback: () => this.updateCountdownUi(),
+    });
   }
 
   getTierConfig(tier) {
@@ -1380,6 +1466,10 @@ class GameScene extends Phaser.Scene {
       this.countdownTickTimer.remove(false);
       this.countdownTickTimer = null;
     }
+    if (this.startCountdownTimer) {
+      this.startCountdownTimer.remove(false);
+      this.startCountdownTimer = null;
+    }
   }
 
   clearTimers() {
@@ -1416,9 +1506,7 @@ class GameScene extends Phaser.Scene {
     this.timeText.setFontSize(timeFontSize);
     this.statusText.setFontSize(statusFontSize);
     this.levelBadgeText.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.038), 18, 24));
-    this.overlayHeadline.setFontSize(overlayHeadlineSize);
-    this.overlaySubline.setFontSize(overlaySublineSize);
-    this.overlayCardBackground.setSize(overlayCardWidth, 152);
+    this.overlayCardBackground.setSize(overlayCardWidth, 176);
     this.homeCardBackground.setSize(Math.min(columnWidth * 0.98, 430), 254);
     this.homeHeadline.setFontSize(overlayHeadlineSize);
     this.homeSubline.setFontSize(overlaySublineSize + 2);
@@ -1440,7 +1528,23 @@ class GameScene extends Phaser.Scene {
     this.scoreText.setPosition(hudX, hudLayout.scoreY);
     this.timeText.setPosition(hudX, hudLayout.timeY);
     this.levelBadge.setPosition(hudX, hudLayout.badgeY);
-    this.statusText.setPosition(hudX, hudLayout.cardBottom + 26, 0);
+    let statusLayout = computeStatusTextLayout({
+      width: w,
+      hudBottom: hudLayout.cardBottom,
+      boardTop,
+      textHeight: this.statusText.height,
+    });
+    if (statusLayout.textScale < 0.999) {
+      const adjustedStatusFontSize = Math.max(18, Math.floor(statusFontSize * statusLayout.textScale));
+      this.statusText.setFontSize(adjustedStatusFontSize);
+      statusLayout = computeStatusTextLayout({
+        width: w,
+        hudBottom: hudLayout.cardBottom,
+        boardTop,
+        textHeight: this.statusText.height,
+      });
+    }
+    this.statusText.setPosition(hudX, statusLayout.y, 0);
     this.levelBanner.setPosition(hudX, boardTop + boardSize * 0.44);
     this.overlayContainer.setPosition(hudX, boardTop + boardSize * 0.5);
     this.setButtonBaseScale(this.homePlayButton, ctaScale);
@@ -1505,6 +1609,7 @@ class GameScene extends Phaser.Scene {
     this.dangerOverlay.setSize(w, h);
     this.menuDimmer.setSize(w, h);
     this.syncActiveTargetsToLayout();
+    this.refreshOverlayCopy();
     this.refreshScreenUi();
   }
 

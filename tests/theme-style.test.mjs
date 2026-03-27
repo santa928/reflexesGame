@@ -7,12 +7,15 @@ import {
   computeBottomControlLayout,
   computeHudLayout,
   computePauseMenuLayout,
+  computeStatusTextLayout,
   computeTopRightControlLayout,
   formatBreachLevel,
+  formatStartCountdownStatus,
   formatUptime,
   getGameModeCopy,
   getOverlayCopy,
   getPauseMenuCopy,
+  getStartCountdownCopy,
   getTimeStyle,
 } from "../src/themeStyle.js";
 
@@ -39,11 +42,34 @@ test("overlay copy exposes start and finish headlines", () => {
     subline: "ひかったら タッチ!",
     cta: "あそぶ！",
   });
+  assert.deepEqual(getOverlayCopy("countdown"), {
+    headline: "じゅんびしてね",
+    subline: "",
+    cta: "",
+  });
   assert.deepEqual(getOverlayCopy("finished"), {
     headline: "おしまい!",
     subline: "きみの てんすう",
     cta: "もういちど",
   });
+});
+
+test("start countdown helper maps remaining time to 3 2 1 copy", () => {
+  assert.deepEqual(getStartCountdownCopy(3000), {
+    headline: "じゅんびしてね",
+    subline: "3",
+  });
+  assert.deepEqual(getStartCountdownCopy(1900), {
+    headline: "じゅんびしてね",
+    subline: "2",
+  });
+  assert.deepEqual(getStartCountdownCopy(200), {
+    headline: "じゅんびしてね",
+    subline: "1",
+  });
+  assert.equal(formatStartCountdownStatus(3000), "3びょうごに スタート!");
+  assert.equal(formatStartCountdownStatus(1200), "2びょうごに スタート!");
+  assert.equal(formatStartCountdownStatus(0), "1びょうごに スタート!");
 });
 
 test("game mode copy exposes normal and serious labels", () => {
@@ -143,6 +169,33 @@ test("hud layout keeps the level badge inside the panel on mobile portrait", () 
   assert.equal(layout.cardHeight >= layout.requiredHeight, true);
   assert.equal(layout.badgeBottom <= layout.cardBottom - layout.bottomPadding, true);
   assert.equal(layout.cardHeight > 170, true);
+});
+
+test("status text layout stays between HUD and board on mobile portrait", () => {
+  const layout = computeStatusTextLayout({
+    width: 390,
+    hudBottom: 212,
+    boardTop: 270,
+    textHeight: 24,
+  });
+
+  assert.equal(layout.textScale, 1);
+  assert.equal(layout.y >= 212 + layout.topGap, true);
+  assert.equal(layout.bottom <= 270 - layout.bottomGap, true);
+});
+
+test("status text layout shrinks before overlapping the board on tablet portrait", () => {
+  const layout = computeStatusTextLayout({
+    width: 768,
+    hudBottom: 266.672,
+    boardTop: 310.48,
+    textHeight: 33.803,
+  });
+
+  assert.equal(layout.textScale < 1, true);
+  assert.equal(layout.effectiveTextHeight <= layout.maxTextHeight, true);
+  assert.equal(layout.bottom <= 310.48 - layout.bottomGap, true);
+  assert.equal(layout.y >= 266.672, true);
 });
 
 test("pause menu layout keeps all three buttons inside the card on mobile portrait", () => {

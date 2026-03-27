@@ -38,6 +38,11 @@ const OVERLAY_COPY = Object.freeze({
     subline: "ひかったら タッチ!",
     cta: "あそぶ！",
   }),
+  countdown: Object.freeze({
+    headline: "じゅんびしてね",
+    subline: "",
+    cta: "",
+  }),
   playing: Object.freeze({
     headline: "",
     subline: "",
@@ -81,6 +86,19 @@ export function getTimeStyle(remainingSec) {
 
 export function getOverlayCopy(mode) {
   return OVERLAY_COPY[mode] ?? OVERLAY_COPY.idle;
+}
+
+export function getStartCountdownCopy(remainingMs) {
+  const secondsLeft = Math.max(1, Math.ceil(Math.max(0, remainingMs) / 1000));
+  return {
+    headline: OVERLAY_COPY.countdown.headline,
+    subline: String(secondsLeft),
+  };
+}
+
+export function formatStartCountdownStatus(remainingMs) {
+  const secondsLeft = Math.max(1, Math.ceil(Math.max(0, remainingMs) / 1000));
+  return `${secondsLeft}びょうごに スタート!`;
 }
 
 export function getPauseMenuCopy(soundEnabled) {
@@ -137,6 +155,42 @@ export function computeHudLayout({
     timeY,
     badgeY,
     badgeBottom: badgeY + badgeHeight * 0.5,
+  };
+}
+
+/**
+ * Keep short status copy inside the narrow strip between HUD and board. When
+ * the strip gets too tight, recommend shrinking the text before it touches the
+ * board.
+ */
+export function computeStatusTextLayout({
+  width,
+  hudBottom,
+  boardTop,
+  textHeight,
+}) {
+  const isMobilePortrait = width < 480;
+  const topGap = isMobilePortrait ? 10 : 8;
+  const bottomGap = isMobilePortrait ? 10 : 8;
+  const availableHeight = Math.max(0, boardTop - hudBottom);
+  const maxTextHeight = Math.max(0, availableHeight - topGap - bottomGap);
+  const textScale = textHeight > 0 && maxTextHeight > 0
+    ? Math.min(1, maxTextHeight / textHeight)
+    : 1;
+  const effectiveTextHeight = textHeight * textScale;
+  const preferredY = hudBottom + topGap;
+  const maxY = boardTop - bottomGap - effectiveTextHeight;
+  const y = Math.max(hudBottom, Math.min(preferredY, maxY));
+
+  return {
+    topGap,
+    bottomGap,
+    availableHeight,
+    maxTextHeight,
+    textScale,
+    effectiveTextHeight,
+    y,
+    bottom: y + effectiveTextHeight,
   };
 }
 

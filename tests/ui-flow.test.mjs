@@ -11,6 +11,7 @@ test("main scene defines home screen and pause menu state transitions", () => {
   const source = fs.readFileSync(mainPath, "utf8");
 
   assert.match(source, /this\.screenMode = "home"/);
+  assert.match(source, /this\.screenMode = "countdown"/);
   assert.match(source, /this\.selectedMode = "normal"/);
   assert.match(source, /label:\s*"あそぶ！"/);
   assert.match(source, /label:\s*"ふつう"/);
@@ -23,6 +24,10 @@ test("main scene defines home screen and pause menu state transitions", () => {
   assert.match(source, /openPauseMenu\(\)/);
   assert.match(source, /resumeGame\(\)/);
   assert.match(source, /goHome\(\)/);
+  assert.match(source, /startCountdownEndAt/);
+  assert.match(source, /startCountdownTimer/);
+  assert.match(source, /beginGameplayRound\(\)/);
+  assert.match(source, /updateCountdownUi\(\)/);
   assert.match(source, /getSnapshotMode\(\)/);
   assert.match(source, /selectedMode: this\.selectedMode/);
 });

@@ -1,5 +1,19 @@
 Original prompt: どうぶつテーマ化と段階難化の改善プランを実装し、Tier3以降は「2匹出る / 1匹押したらその1匹だけ消えて +1 / もう1匹は残る」仕様にする。
 
+2026-03-27
+- `https://github.com/santa928/reflexesGame/issues/1` 向けに `docs/plans/2026-03-27-start-countdown-design.md` と `docs/plans/2026-03-27-start-countdown-implementation.md` を追加し、開始前 3 秒カウントダウンの要件・状態遷移・実装手順を記録した。
+- `src/themeStyle.js` に `countdown` overlay copy と `getStartCountdownCopy()` / `formatStartCountdownStatus()` を追加し、`3 / 2 / 1` 表示と HUD 補助文言の参照元をそろえた。
+- `src/main.js` に `countdown` 状態、`startCountdownTimer` / `startCountdownEndAt`、`prepareRoundState()`、`beginGameplayRound()`、`updateCountdownUi()` を追加し、`home -> countdown -> playing` と `finished -> countdown -> playing` の導線を実装した。
+- `tests/theme-style.test.mjs` と `tests/ui-flow.test.mjs` を RED -> GREEN で更新し、`countdown` copy と scene state 遷移がコード上で固定されるようにした。
+- Docker 上で `node --test tests/theme-style.test.mjs tests/ui-flow.test.mjs` を最初に FAIL させ、その後 `docker run --rm -v \"$PWD\":/app -w /app node:20 sh -lc 'node --test tests/*.test.mjs && node --check src/main.js'` を実行して 29 件すべて通過することを確認した。
+- Playwright 検証では最初に既定 profile の service worker が古い `src/main.js` を返し、`scene.startGame()` が旧実装のまま `playing` へ直行することを確認した。`navigator.serviceWorker.getRegistrations().unregister()` と `caches.delete()` の後に reload して fresh asset へ切り替えた。
+- fresh asset 後の Playwright state では、`390x844` / `768x1024` の両方で `scene.startGame()` 直後が `screenMode:\"countdown\"` + `status:\"3びょうごに スタート!\"`、3.3 秒後が `screenMode:\"playing\"`、`scene.finishGame(); scene.startGame();` 直後が再び `screenMode:\"countdown\"` になることを確認した。
+- スクリーンショットは `tmp/ui-check/start-countdown-390-home.png`、`tmp/ui-check/start-countdown-390-countdown.png`、`tmp/ui-check/start-countdown-390-playing.png`、`tmp/ui-check/start-countdown-390-restart-countdown.png`、`tmp/ui-check/start-countdown-768-home.png`、`tmp/ui-check/start-countdown-768-countdown.png`、`tmp/ui-check/start-countdown-768-playing.png`、`tmp/ui-check/start-countdown-768-restart-countdown.png` に保存した。
+- ユーザー指摘を受け、HUD 下の短い案内文が盤面へ被る回帰を調査した。`768x1024` で `statusBottom=326.47` に対して `boardTop=310.48` となり、約 16px 食い込んでいた。
+- `src/themeStyle.js` に `computeStatusTextLayout()` を追加し、HUD 下端と盤面上端の帯に収まる `status` 用レイアウトと縮小率を helper 化した。`src/main.js` は helper を使って status font size と Y 座標を再計算するよう修正した。
+- `tests/theme-style.test.mjs` に mobile / tablet の status layout RED -> GREEN テストを追加し、Docker 上で `node --test tests/*.test.mjs && node --check src/main.js` を再実行して 31 件すべて通過した。
+- fresh asset 前提の Playwright 再検証で、`390x844` と `768x1024` の countdown / playing スクリーンショットを目視確認し、案内文が HUD と盤面の間に収まり、盤面へ重なっていないことを確認した。確認に使った画像は `.playwright-cli/page-2026-03-27T14-32-55-882Z.png`、`.playwright-cli/page-2026-03-27T14-33-00-396Z.png`、`.playwright-cli/page-2026-03-27T14-33-35-183Z.png`、`.playwright-cli/page-2026-03-27T14-33-39-702Z.png`。
+
 2026-03-26
 - `docs/plans/2026-03-26-menu-bounds-design.md` と `docs/plans/2026-03-26-menu-bounds-implementation.md` を追加し、HUD バッジとポーズメニューの枠内収まり条件を要件・手順として明文化した。
 - `src/themeStyle.js` に `computeHudLayout()` と `computePauseMenuLayout()` を追加し、カード内要素の実寸から `cardHeight / buttonScale / centerY` を逆算するようにした。
