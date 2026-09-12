@@ -53,7 +53,7 @@ const { serveGame } = require('./server.cjs');
       phase='failed update';
       console.log(`PWA ${name}: ${phase}`);
       await p.evaluate(async()=>{
-        const r=await navigator.serviceWorker.getRegistration();
+        const r=window.migrationRegistration=await navigator.serviceWorker.getRegistration();
         r.addEventListener('updatefound',()=>{window.failedWorker=r.installing;},{once:true});
         await r.update();
       });
@@ -65,28 +65,27 @@ const { serveGame } = require('./server.cjs');
       phase='candidate update';
       console.log(`PWA ${name}: ${phase}`);
       await p.evaluate(async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update();});
-      await p.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting);
+      await p.waitForFunction(()=>!!window.migrationRegistration.waiting);
       await p.evaluate(()=>window.__reflexesGameUi.getScene().startGame());
       await p.waitForFunction(()=>window.__reflexesGameUi.getScene().isRunning);
       assert.equal(await p.evaluate(()=>!!window.__reflexesGameUi.getScene().roundClock),false,'waiting update must not replace running code');
-      // Capture the waiting worker before closing clients. A fresh registration
-      // snapshot can briefly expose the old active worker without its waiting
-      // peer, so absence of waiting alone does not prove candidate activation.
+      // Resolve the registration once, then poll its live state synchronously.
+      // An async predicate returns a truthy Promise and does not keep polling
+      // when its resolved value is false in this Playwright version.
       const observer=await context.newPage();
       await observer.goto(`${server.origin}/observer.html`);
-      await observer.waitForFunction(async()=>{
-        const r=await navigator.serviceWorker.getRegistration('/reflexesGame/');
-        if(!r?.waiting) return false;
-        window.expectedWorker=r.waiting;
-        return true;
+      await observer.evaluate(async()=>{
+        window.migrationRegistration=await navigator.serviceWorker.getRegistration('/reflexesGame/');
       });
+      await observer.waitForFunction(()=>!!window.migrationRegistration?.waiting);
+      await observer.evaluate(()=>{window.expectedWorker=window.migrationRegistration.waiting;});
       await p.close();
       assert.equal(await q.evaluate(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting),true,'second old client keeps update waiting');
       await q.close();
       phase='activation';
       console.log(`PWA ${name}: ${phase}`);
-      await observer.waitForFunction(async()=>{
-        const r=await navigator.serviceWorker.getRegistration('/reflexesGame/');
+      await observer.waitForFunction(()=>{
+        const r=window.migrationRegistration;
         return r?.active===window.expectedWorker && r.active?.state==='activated';
       });
       const fresh=await context.newPage();
