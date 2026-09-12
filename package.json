@@ -1,0 +1,14 @@
+{
+  "name": "pikapika-touch",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cache:version": "node scripts/update-cache-version.mjs",
+    "test": "node scripts/update-cache-version.mjs --check && node --test tests/*.test.mjs",
+    "test:browser": "node tests/browser/gameplay.cjs && node tests/browser/pwa.cjs && node tests/browser/live-round.cjs",
+    "test:performance": "node tests/browser/performance.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

@@ -1,0 +1,16 @@
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "127.0.0.1:18086:80"
+    volumes:
+      - .:/usr/share/nginx/html:ro
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    shm_size: 1gb
+    volumes:
+      - .:/app:ro
+      - ./tmp:/app/tmp
+    command: sh -c 'npm test && npm run test:browser'

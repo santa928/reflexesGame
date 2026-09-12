@@ -25,6 +25,7 @@ import {
   pickSpawnCellIndex,
 } from "./spawnLogic.js";
 import { NODE_VARIANTS, buildNodeTargetSpec } from "./targetStyle.js";
+import { RoundClock } from "./roundClock.js";
 
 const GAME_CONFIG = Object.freeze({
   gridSize: 3,
@@ -133,6 +134,10 @@ class BootScene extends Phaser.Scene {
 class GameScene extends Phaser.Scene {
   constructor() {
     super("GameScene");
+    this.roundClock = new RoundClock();
+    this.activeTones = new Set();
+    this.roundEffects = new Set();
+    this.keyboardCellIndex = 0;
     this.cellCenters = [];
     this.cellZones = [];
     this.spawnTimers = [];
@@ -169,6 +174,7 @@ class GameScene extends Phaser.Scene {
     this.statusColor = "#bae6fd";
   }
 
+  /** Create one scene, its accessible controls and paired lifecycle listeners. */
   create() {
     this.setupState();
     this.createBackdrop();
@@ -178,6 +184,32 @@ class GameScene extends Phaser.Scene {
     this.layout(this.scale.width, this.scale.height);
     this.goHome();
     this.scale.on("resize", this.onResize, this);
+    this.onDocumentHidden = () => {
+      if (document.hidden) {
+        this.stopTones();
+        this.openPauseMenu();
+      }
+    };
+    this.onPageHide = () => { this.stopTones(); this.openPauseMenu(); };
+    document.addEventListener("visibilitychange", this.onDocumentHidden);
+    window.addEventListener("pagehide", this.onPageHide);
+    this.events.once("shutdown", this.shutdown, this);
+  }
+
+  /** Enforce deadlines each frame even when a Phaser timer notification is late. */
+  update() {
+    if (this.isMenuOpen) return;
+    if (this.screenMode === "countdown" && this.roundClock.now() >= this.startCountdownEndAt) {
+      this.beginGameplayRound();
+    }
+    if (!this.isRunning) return;
+    if (this.roundClock.now() >= this.countdownEndAt) {
+      this.finishGame();
+      return;
+    }
+    [...this.activeTargets].forEach((target) => {
+      if (this.roundClock.now() >= target.expiresAt) this.handleTargetExpired(target);
+    });
   }
 
   setupState() {
@@ -421,7 +453,6 @@ class GameScene extends Phaser.Scene {
       .setDepth(52)
       .setVisible(false)
       .setInteractive({ useHandCursor: false });
-    this.menuDimmer.on("pointerdown", () => this.resumeGame());
 
     this.menuCardBackground = this.add.rectangle(0, 0, 340, 280, 0x081121, 0.9)
       .setStrokeStyle(3, hexToNumber(NEON_THEME.palette.gridGlow), 0.94);
@@ -496,7 +527,8 @@ class GameScene extends Phaser.Scene {
       ["buttonMenuSound", "game-ui-text game-ui-button-label"],
       ["buttonMenuHome", "game-ui-text game-ui-button-label"],
     ].forEach(([key, className]) => {
-      const node = document.createElement("div");
+      const node = document.createElement(key.startsWith("button") ? "button" : "div");
+      if (key.startsWith("button")) node.type = "button";
       node.className = `${className} game-ui-hidden`;
       node.dataset.uiKey = key;
       root.append(node);
@@ -513,6 +545,51 @@ class GameScene extends Phaser.Scene {
     this.menuContinueButton.domLabelKey = "buttonMenuContinue";
     this.menuSoundButton.domLabelKey = "buttonMenuSound";
     this.menuHomeButton.domLabelKey = "buttonMenuHome";
+
+    this.uiButtons = [this.homePlayButton, this.homeNormalModeButton, this.homeSeriousModeButton,
+      this.homeSoundButton, this.restartButton, this.finishHomeButton, this.pauseButton,
+      this.menuContinueButton, this.menuSoundButton, this.menuHomeButton];
+    this.uiButtons.forEach(button => {
+      const node = this.domUi.nodes[button.domLabelKey];
+      node.addEventListener("click", () => {
+        if (node.disabled || node.hidden) return;
+        this.playButtonPress(button);
+        button.onPress();
+      });
+      // Native controls own input; the canvas now supplies their decoration only.
+      button.hitArea.disableInteractive();
+    });
+    this.domUi.nodes.buttonPause.setAttribute("aria-label", "いちじていし");
+    ["homeHeadline", "overlayHeadline"].forEach(key => {
+      this.domUi.nodes[key].tabIndex = -1;
+      this.domUi.nodes[key].setAttribute("role", "heading");
+      this.domUi.nodes[key].setAttribute("aria-level", "1");
+    });
+    const instructions = document.createElement("p");
+    instructions.id = "keyboard-help";
+    instructions.className = "game-ui-sr-only";
+    instructions.textContent = "ひかった マスを タッチ。キーボードは Tabでマスへ、やじるしでえらび、Enterかスペースでタッチ。Escapeでいちじていし。";
+    root.append(instructions);
+    for (let i = 0; i < 9; i += 1) {
+      const node = document.createElement("button");
+      node.type = "button";
+      node.className = "game-ui-cell";
+      node.dataset.cellIndex = String(i);
+      node.setAttribute("aria-describedby", "keyboard-help");
+      node.addEventListener("pointerdown", event => {
+        if (event.button !== 0 || node.disabled) return;
+        event.preventDefault();
+        this.onCellPressed(i);
+      });
+      node.addEventListener("click", event => {
+        // Keyboard/assistive clicks have detail 0. Pointerdown already scored taps.
+        if (event.detail === 0) this.onCellPressed(i);
+      });
+      root.append(node);
+      this.domUi.nodes[`cell${i}`] = node;
+    }
+    this.onUiKeydown = event => this.handleUiKeydown(event);
+    root.addEventListener("keydown", this.onUiKeydown);
 
     [
       this.scoreText,
@@ -548,14 +625,18 @@ class GameScene extends Phaser.Scene {
     node.textContent = text ?? "";
   }
 
+  /** Remove hidden controls from painting, hit testing and the focus order. */
   setDomVisible(key, visible) {
     const node = this.domUi.nodes[key];
     if (!node) {
       return;
     }
     node.classList.toggle("game-ui-hidden", !visible);
+    node.hidden = !visible;
+    if (node.tagName === "BUTTON") node.disabled = !visible;
   }
 
+  /** Keep accessible controls aligned with the current stage and pause overlay. */
   syncDomVisibility() {
     const isHome = this.screenMode === "home";
     const isCountdown = this.screenMode === "countdown";
@@ -563,10 +644,10 @@ class GameScene extends Phaser.Scene {
     const showGameChrome = !isHome;
     const showMenu = this.isMenuOpen;
 
-    this.setDomVisible("score", showGameChrome);
-    this.setDomVisible("time", showGameChrome);
-    this.setDomVisible("badge", showGameChrome);
-    this.setDomVisible("status", showGameChrome && !this.isLevelBannerActive);
+    this.setDomVisible("score", showGameChrome && !showMenu);
+    this.setDomVisible("time", showGameChrome && !showMenu);
+    this.setDomVisible("badge", showGameChrome && !showMenu);
+    this.setDomVisible("status", showGameChrome && !showMenu && !this.isLevelBannerActive);
     this.setDomVisible("homeHeadline", isHome);
     this.setDomVisible("homeSubline", isHome);
     this.setDomVisible("homeModeTitle", isHome);
@@ -574,17 +655,75 @@ class GameScene extends Phaser.Scene {
     this.setDomVisible("overlayHeadline", (isCountdown || isFinished) && !showMenu);
     this.setDomVisible("overlaySubline", (isCountdown || isFinished) && !showMenu);
     this.setDomVisible("menuTitle", showMenu);
-    this.setDomVisible("levelBanner", this.isLevelBannerActive);
+    this.setDomVisible("levelBanner", this.isLevelBannerActive && !showMenu);
     this.setDomVisible("buttonHomePlay", isHome);
     this.setDomVisible("buttonHomeNormal", isHome);
     this.setDomVisible("buttonHomeSerious", isHome);
     this.setDomVisible("buttonHomeSound", isHome);
     this.setDomVisible("buttonRestart", isFinished && !showMenu);
     this.setDomVisible("buttonFinishHome", isFinished && !showMenu);
-    this.setDomVisible("buttonPause", showGameChrome && !showMenu && !isCountdown);
+    this.setDomVisible("buttonPause", this.screenMode === "playing" && !showMenu);
     this.setDomVisible("buttonMenuContinue", showMenu);
     this.setDomVisible("buttonMenuSound", showMenu);
     this.setDomVisible("buttonMenuHome", showMenu);
+    this.syncCellUi();
+  }
+
+  /** Expose a stable 3x3 roving focus grid without chasing the lit target. */
+  syncCellUi() {
+    const visible = this.screenMode === "playing" && this.isRunning && !this.isMenuOpen;
+    this.cellCenters.forEach((cell, i) => {
+      const node = this.domUi.nodes[`cell${i}`];
+      if (!node) return;
+      this.setDomVisible(`cell${i}`, visible);
+      node.tabIndex = i === this.keyboardCellIndex ? 0 : -1;
+      node.style.left = `${cell.x}px`;
+      node.style.top = `${cell.y}px`;
+      node.style.width = `${cell.size}px`;
+      node.style.height = `${cell.size}px`;
+      const lit = this.activeTargets.some(target => target.cellIndex === i);
+      node.setAttribute("aria-label", `${Math.floor(i / 3) + 1}だんめ ${i % 3 + 1}こめ${lit ? " ひかっている" : ""}`);
+    });
+  }
+
+  /** Transfer focus to a visible control after a user-driven stage change. */
+  focusUi(key) {
+    const node = this.domUi.nodes[key];
+    if (node && !node.hidden) node.focus({ preventScroll: true });
+  }
+
+  /** Support native activation, bounded grid navigation and pause focus trapping. */
+  handleUiKeydown(event) {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.repeat && ["Enter", " ", "Escape"].includes(event.key)) {
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (this.isMenuOpen) this.resumeGame();
+      else this.openPauseMenu();
+      return;
+    }
+    if (this.isMenuOpen && event.key === "Tab") {
+      const first = this.domUi.nodes.buttonMenuContinue;
+      const last = this.domUi.nodes.buttonMenuHome;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    }
+    if (!event.target.matches(".game-ui-cell")) return;
+    const current = Number(event.target.dataset.cellIndex);
+    const offsets = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 };
+    if (!(event.key in offsets)) return;
+    event.preventDefault();
+    const next = current + offsets[event.key];
+    if (next < 0 || next > 8 || (Math.abs(offsets[event.key]) === 1 && Math.floor(next / 3) !== Math.floor(current / 3))) return;
+    this.keyboardCellIndex = next;
+    this.syncCellUi();
+    this.focusUi(`cell${next}`);
   }
 
   getWorldMetrics(textNode) {
@@ -642,6 +781,7 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Match each native button's full hit area to its canvas decoration. */
   syncDomButtonLabel(button) {
     if (!button?.domLabelKey) {
       return;
@@ -664,7 +804,10 @@ class GameScene extends Phaser.Scene {
     node.style.letterSpacing = `${button.spec.label.letterSpacing}px`;
     node.style.textShadow = `0 0 ${button.spec.label.glowBlur ?? 8}px ${button.spec.colors.glowColor}`;
     node.style.transform = this.buildDomTransform("center");
-    node.style.width = "auto";
+    node.style.width = `${button.spec.hitArea.width * scaleX}px`;
+    node.style.height = `${button.spec.hitArea.height * scaleY}px`;
+    if (button.kind === "mode") node.setAttribute("aria-pressed", String(button.selected));
+    if (button.kind === "sound") node.setAttribute("aria-pressed", String(this.audioEnabled));
   }
 
   syncAllDomText() {
@@ -775,6 +918,7 @@ class GameScene extends Phaser.Scene {
     container.setSize(spec.size.width, spec.size.height);
 
     const button = {
+      onPress,
       kind,
       container,
       glow,
@@ -859,10 +1003,11 @@ class GameScene extends Phaser.Scene {
     this.syncDomButtonLabel(button);
   }
 
+  /** Canvas controls stay decorative once their native counterpart exists. */
   setButtonVisible(button, visible) {
     button.container.setVisible(visible);
     if (button.hitArea.input) {
-      button.hitArea.input.enabled = visible;
+      button.hitArea.input.enabled = visible && !button.domLabelKey;
     }
   }
 
@@ -964,7 +1109,7 @@ class GameScene extends Phaser.Scene {
 
   refreshOverlayCopy() {
     if (this.screenMode === "countdown") {
-      const copy = getStartCountdownCopy(this.startCountdownEndAt - this.time.now);
+      const copy = getStartCountdownCopy(this.startCountdownEndAt - this.roundClock.now());
       const headlineSize = Phaser.Math.Clamp(Math.round(this.scale.width * 0.05), 22, 28);
       const countSize = Phaser.Math.Clamp(Math.round(this.scale.width * 0.18), 68, 100);
       this.overlayHeadline
@@ -1027,8 +1172,10 @@ class GameScene extends Phaser.Scene {
     this.syncAllDomText();
   }
 
+  /** Freeze the shared clock and timer notifications without changing the stage. */
   pauseGameplayRuntime() {
-    this.remainingTimeMs = Math.max(0, this.countdownEndAt - this.time.now);
+    this.roundClock.pause();
+    if (this.isRunning) this.remainingTimeMs = Math.max(0, this.countdownEndAt - this.roundClock.now());
     this.spawnTimers.forEach((timer) => {
       timer.paused = true;
     });
@@ -1038,15 +1185,21 @@ class GameScene extends Phaser.Scene {
     if (this.countdownTickTimer) {
       this.countdownTickTimer.paused = true;
     }
+    if (this.startCountdownTimer) this.startCountdownTimer.paused = true;
+    this.stopTones();
     this.activeTargets.forEach((target) => {
       if (target.expireTimer) {
         target.expireTimer.paused = true;
       }
+      [target.popTween, target.spinTween, target.pulseTween, target.scanTween].forEach(tween => {
+        if (tween && !tween.isDestroyed() && tween.isPlaying()) tween.pause();
+      });
     });
   }
 
+  /** Resume notifications against the unchanged active-time deadlines. */
   resumeGameplayRuntime() {
-    this.countdownEndAt = this.time.now + this.remainingTimeMs;
+    this.roundClock.resume();
     this.spawnTimers.forEach((timer) => {
       timer.paused = false;
     });
@@ -1056,15 +1209,19 @@ class GameScene extends Phaser.Scene {
     if (this.countdownTickTimer) {
       this.countdownTickTimer.paused = false;
     }
+    if (this.startCountdownTimer) this.startCountdownTimer.paused = false;
     this.activeTargets.forEach((target) => {
       if (target.expireTimer) {
         target.expireTimer.paused = false;
       }
+      [target.popTween, target.spinTween, target.pulseTween, target.scanTween].forEach(tween => {
+        if (tween && !tween.isDestroyed() && tween.isPaused()) tween.resume();
+      });
     });
   }
 
   getSnapshotMode() {
-    if (this.isMenuOpen && this.screenMode === "playing") {
+    if (this.isMenuOpen) {
       return "paused";
     }
     return this.screenMode;
@@ -1096,7 +1253,7 @@ class GameScene extends Phaser.Scene {
     this.setButtonVisible(this.restartButton, isFinished && !showMenu);
     this.setButtonVisible(this.finishHomeButton, isFinished && !showMenu);
 
-    this.setButtonVisible(this.pauseButton, showGameChrome && !showMenu && !isCountdown);
+    this.setButtonVisible(this.pauseButton, this.screenMode === "playing" && !showMenu);
 
     this.menuDimmer.setVisible(showMenu);
     if (this.menuDimmer.input) {
@@ -1109,23 +1266,29 @@ class GameScene extends Phaser.Scene {
 
     this.cellZones.forEach((zone) => {
       if (zone.input) {
-        zone.input.enabled = showGameChrome && !showMenu && this.isRunning;
+        zone.input.enabled = showGameChrome && !showMenu && this.isRunning && !this.domUi.root;
       }
     });
     this.syncDomVisibility();
   }
 
+  /** Pause on request or page departure; returning alone never restarts a round. */
   openPauseMenu() {
-    if (this.screenMode === "home" || this.screenMode === "countdown" || this.isMenuOpen) {
+    if (!["playing", "countdown"].includes(this.screenMode) || this.isMenuOpen) {
       return;
     }
-    this.wasRunningBeforeMenu = this.screenMode === "playing" && this.isRunning;
+    if (this.isRunning && this.roundClock.now() >= this.countdownEndAt) {
+      this.finishGame();
+      return;
+    }
+    this.wasRunningBeforeMenu = true;
     if (this.wasRunningBeforeMenu) {
       this.pauseGameplayRuntime();
     }
     this.isMenuOpen = true;
     this.refreshMenuCopy();
     this.refreshScreenUi();
+    this.focusUi("buttonMenuContinue");
   }
 
   selectGameMode(mode) {
@@ -1136,8 +1299,9 @@ class GameScene extends Phaser.Scene {
     this.updateHomeCopy();
   }
 
+  /** Explicitly resume the preserved preparation or play stage. */
   resumeGame() {
-    if (!this.isMenuOpen) {
+    if (!this.isMenuOpen || document.hidden) {
       return;
     }
     this.isMenuOpen = false;
@@ -1146,12 +1310,15 @@ class GameScene extends Phaser.Scene {
     }
     this.wasRunningBeforeMenu = false;
     this.refreshScreenUi();
+    this.focusUi(this.screenMode === "playing" ? "buttonPause" : "overlayHeadline");
   }
 
+  /** Clear the prior round before returning to the reusable home controls. */
   goHome() {
-    this.resumeGame();
     this.clearTimers();
     this.clearActiveTargets(false);
+    this.clearRoundFeedback();
+    this.stopTones();
     this.setupState();
     this.updateScoreText(false);
     this.updateTimeText();
@@ -1161,11 +1328,15 @@ class GameScene extends Phaser.Scene {
     this.refreshMenuCopy();
     this.refreshScreenUi();
     this.syncAllDomText();
+    this.focusUi("buttonHomePlay");
   }
 
+  /** Reset timers, effects and the active clock before a new countdown. */
   prepareRoundState() {
     this.clearTimers();
     this.clearActiveTargets(false);
+    this.clearRoundFeedback();
+    this.roundClock.reset();
     this.isMenuOpen = false;
     this.wasRunningBeforeMenu = false;
     this.isRunning = false;
@@ -1185,12 +1356,13 @@ class GameScene extends Phaser.Scene {
     this.updateTierUi();
   }
 
+  /** Refresh preparation text from active time, never background wall time. */
   updateCountdownUi() {
-    if (this.screenMode !== "countdown") {
+    if (this.screenMode !== "countdown" || this.isMenuOpen) {
       return;
     }
 
-    const msLeft = Math.max(0, this.startCountdownEndAt - this.time.now);
+    const msLeft = Math.max(0, this.startCountdownEndAt - this.roundClock.now());
     if (msLeft <= 0) {
       this.beginGameplayRound();
       return;
@@ -1200,7 +1372,9 @@ class GameScene extends Phaser.Scene {
     this.setStatusText(formatStartCountdownStatus(msLeft), "#bae6fd");
   }
 
+  /** Begin play once after the complete active preparation interval. */
   beginGameplayRound() {
+    if (this.screenMode !== "countdown" || this.isMenuOpen || document.hidden) return;
     if (this.startCountdownTimer) {
       this.startCountdownTimer.remove(false);
       this.startCountdownTimer = null;
@@ -1212,28 +1386,32 @@ class GameScene extends Phaser.Scene {
     this.isRunning = true;
     this.screenMode = "playing";
     this.remainingTimeMs = GAME_CONFIG.gameDurationMs;
-    this.countdownEndAt = this.time.now + GAME_CONFIG.gameDurationMs;
+    this.countdownEndAt = this.roundClock.now() + GAME_CONFIG.gameDurationMs;
     this.updateTimeText();
     this.setStatusText(`${getGameModeCopy(this.selectedMode).label}で スタート!`, NEON_THEME.palette.hud);
     this.refreshMenuCopy();
     this.refreshScreenUi();
 
-    this.gameTimer = this.time.delayedCall(GAME_CONFIG.gameDurationMs, () => this.finishGame());
+    this.gameTimer = this.time.delayedCall(GAME_CONFIG.gameDurationMs, () => this.updateRemainingTime());
     this.countdownTickTimer = this.time.addEvent({
       delay: GAME_CONFIG.countdownTickMs,
       loop: true,
       callback: () => this.updateRemainingTime(),
     });
     this.ensureTargetCapacity();
+    this.focusUi("cell0");
   }
 
+  /** Accept start/retry only on their visible screens, preventing double starts. */
   startGame() {
+    if (!["home", "finished"].includes(this.screenMode) || document.hidden) return;
     this.prepareRoundState();
     this.screenMode = "countdown";
-    this.startCountdownEndAt = this.time.now + GAME_CONFIG.startCountdownMs;
+    this.startCountdownEndAt = this.roundClock.now() + GAME_CONFIG.startCountdownMs;
     this.updateCountdownUi();
     this.refreshMenuCopy();
     this.refreshScreenUi();
+    this.focusUi("overlayHeadline");
 
     this.startCountdownTimer = this.time.addEvent({
       delay: GAME_CONFIG.countdownTickMs,
@@ -1269,13 +1447,19 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  /** TimerEvents notify; the active clock decides when a reservation is due. */
   scheduleSpawn(delayMs) {
+    const dueAt = this.roundClock.now() + delayMs;
     this.spawnReservationCount += 1;
     const spawnTimer = this.time.delayedCall(delayMs, () => {
       this.spawnTimers = this.spawnTimers.filter((timer) => timer !== spawnTimer);
       this.spawnReservationCount = Math.max(0, this.spawnReservationCount - 1);
 
-      if (!this.isRunning) {
+      if (!this.isRunning || this.isMenuOpen || this.roundClock.now() >= this.countdownEndAt) {
+        return;
+      }
+      if (this.roundClock.now() < dueAt) {
+        this.scheduleSpawn(dueAt - this.roundClock.now());
         return;
       }
 
@@ -1309,6 +1493,7 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  /** Create one target with a half-open active-time lifetime. */
   createNodeTarget(cellIndex, { tier = this.tier, tierConfig = this.currentTierConfig, lifespanMs = this.roundMsCurrent } = {}) {
     const center = this.cellCenters[cellIndex];
     const variantId = Phaser.Utils.Array.GetRandom(this.nodeVariantPool);
@@ -1394,10 +1579,12 @@ class GameScene extends Phaser.Scene {
       scanTween,
       scaleFactor: tierConfig.targetScale,
       expireTimer: null,
-      spawnedAt: this.time.now,
+      spawnedAt: this.roundClock.now(),
+      expiresAt: this.roundClock.now() + lifespanMs,
     };
     target.expireTimer = this.time.delayedCall(lifespanMs, () => this.handleTargetExpired(target));
     this.activeTargets.push(target);
+    this.syncCellUi();
     return target;
   }
 
@@ -1417,13 +1604,18 @@ class GameScene extends Phaser.Scene {
     target.crosshairV.setSize(crossThickness, crossLength);
   }
 
+  /** Award exactly one hit while both round and target are still alive. */
   handleHit(cellIndex) {
-    if (!this.isRunning) {
+    if (!this.canAcceptBoardInput()) {
       return;
     }
 
     const hitTarget = this.activeTargets.find((target) => target.cellIndex === cellIndex);
     if (!hitTarget) {
+      return;
+    }
+    if (this.roundClock.now() >= hitTarget.expiresAt) {
+      this.handleTargetExpired(hitTarget);
       return;
     }
 
@@ -1453,8 +1645,15 @@ class GameScene extends Phaser.Scene {
     );
   }
 
+  /** Expire a live target once; round completion takes precedence over a miss. */
   handleTargetExpired(target) {
-    if (!this.isRunning || !this.activeTargets.includes(target)) {
+    if (!this.canAcceptBoardInput() || !this.activeTargets.includes(target)) {
+      return;
+    }
+    const remaining = target.expiresAt - this.roundClock.now();
+    if (remaining > 0) {
+      target.expireTimer?.remove(false);
+      target.expireTimer = this.time.delayedCall(remaining, () => this.handleTargetExpired(target));
       return;
     }
 
@@ -1475,8 +1674,19 @@ class GameScene extends Phaser.Scene {
     this.ensureTargetCapacity();
   }
 
+  /** Share the exact same deadline gate between pointer and keyboard input. */
+  canAcceptBoardInput() {
+    if (!this.isRunning || this.isMenuOpen || document.hidden) return false;
+    if (this.roundClock.now() >= this.countdownEndAt) {
+      this.finishGame();
+      return false;
+    }
+    return true;
+  }
+
+  /** Handle a visible cell without allowing stale input to affect another round. */
   onCellPressed(cellIndex) {
-    if (!this.isRunning || this.isMenuOpen) {
+    if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex >= this.cellCenters.length || !this.canAcceptBoardInput()) {
       return;
     }
 
@@ -1572,12 +1782,13 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  /** Derive the HUD from the same deadline used for scoring. */
   updateRemainingTime() {
-    if (!this.isRunning) {
+    if (!this.isRunning || this.isMenuOpen) {
       return;
     }
 
-    const msLeft = Math.max(0, this.countdownEndAt - this.time.now);
+    const msLeft = Math.max(0, this.countdownEndAt - this.roundClock.now());
     this.remainingTimeMs = msLeft;
     this.updateTimeText();
     if (msLeft <= 0) {
@@ -1626,20 +1837,26 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  /** Finish once; clearing leftover targets is never a scored miss. */
   finishGame() {
     if (!this.isRunning) {
       return;
     }
 
     this.isRunning = false;
+    this.isMenuOpen = false;
+    this.wasRunningBeforeMenu = false;
     this.screenMode = "finished";
     this.remainingTimeMs = 0;
     this.updateTimeText();
     this.playCue("finish");
     this.clearTimers();
-    this.clearActiveTargets(true);
+    this.clearActiveTargets(false);
+    this.clearRoundFeedback();
     this.setStatusText(GAME_CONFIG.statusMessages.finish, NEON_THEME.palette.warning);
     this.refreshScreenUi();
+    this.layout(this.scale.width, this.scale.height);
+    this.focusUi("buttonRestart");
   }
 
   playLevelUpFeedback() {
@@ -1676,8 +1893,10 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  /** Toggle sound from a user gesture, stopping any notes when muted. */
   toggleSound() {
     this.audioEnabled = !this.audioEnabled;
+    if (!this.audioEnabled) this.stopTones();
     this.refreshMenuCopy();
     if (this.audioEnabled) {
       this.playCue("toggle");
@@ -1688,8 +1907,9 @@ class GameScene extends Phaser.Scene {
     return this.audioEnabled ? "おと: あり" : "おと: なし";
   }
 
+  /** Never produce gameplay sounds after the document becomes hidden. */
   playCue(name) {
-    if (!this.audioEnabled) {
+    if (!this.audioEnabled || document.hidden) {
       return;
     }
 
@@ -1701,6 +1921,7 @@ class GameScene extends Phaser.Scene {
     cue.forEach((tone) => this.playTone(tone));
   }
 
+  /** Play a short user-enabled tone and release its audio nodes on completion. */
   playTone(tone) {
     const context = this.sound.context;
     if (!context) {
@@ -1723,8 +1944,46 @@ class GameScene extends Phaser.Scene {
 
     oscillator.connect(gain);
     gain.connect(context.destination);
+    this.activeTones.add(oscillator);
+    oscillator.onended = () => {
+      this.activeTones.delete(oscillator);
+      oscillator.disconnect();
+      gain.disconnect();
+    };
     oscillator.start(now);
     oscillator.stop(now + release + 0.01);
+  }
+
+  /** Stop already scheduled notes on pause, departure or mute. */
+  stopTones() {
+    this.activeTones.forEach(oscillator => {
+      try { oscillator.stop(); } catch { /* A completed oscillator is already silent. */ }
+    });
+    this.activeTones.clear();
+  }
+
+  /** Remove round-specific feedback so home/retry cannot inherit stale effects. */
+  clearRoundFeedback() {
+    this.levelBannerTween?.stop();
+    this.levelBannerTween = null;
+    this.isLevelBannerActive = false;
+    this.levelBanner?.setVisible(false).setAlpha(0).setScale(0.7);
+    this.roundEffects.forEach(effect => {
+      this.tweens.killTweensOf(effect);
+      effect.destroy();
+    });
+    this.roundEffects.clear();
+    [this.scoreText, this.timeText, this.flashOverlay].forEach(node => this.tweens.killTweensOf(node));
+    this.scoreText?.setScale(1);
+    this.timeText?.setScale(1);
+    this.flashOverlay?.setAlpha(0);
+    this.cameras.main.resetFX();
+  }
+
+  /** Release a finished transient effect and its tracking entry. */
+  destroyRoundEffect(effect) {
+    this.roundEffects.delete(effect);
+    effect.destroy();
   }
 
   showTapFeedback(cell, color) {
@@ -1734,13 +1993,14 @@ class GameScene extends Phaser.Scene {
 
     const ring = this.add.circle(cell.x, cell.y, Math.max(14, cell.size * 0.12), color, 0)
       .setStrokeStyle(3, color, 0.92);
+    this.roundEffects.add(ring);
     this.tweens.add({
       targets: ring,
       alpha: 0,
       scale: 1.8,
       duration: 180,
       ease: "Quad.easeOut",
-      onComplete: () => ring.destroy(),
+      onComplete: () => this.destroyRoundEffect(ring),
     });
   }
 
@@ -1752,13 +2012,14 @@ class GameScene extends Phaser.Scene {
     const ripple = this.add.circle(cell.x, cell.y, Math.max(14, cell.size * 0.12), color, 0.18)
       .setStrokeStyle(3, color, 0.92)
       .setBlendMode(Phaser.BlendModes.SCREEN);
+    this.roundEffects.add(ripple);
     this.tweens.add({
       targets: ripple,
       scale: 2.2,
       alpha: 0,
       duration: 260,
       ease: "Quad.easeOut",
-      onComplete: () => ripple.destroy(),
+      onComplete: () => this.destroyRoundEffect(ripple),
     });
 
     const burstCount = 6;
@@ -1767,6 +2028,7 @@ class GameScene extends Phaser.Scene {
       const angle = Phaser.Math.DegToRad(angleDeg);
       const ray = this.add.rectangle(cell.x, cell.y, Math.max(8, cell.size * 0.06), 4, color, 0.95)
         .setAngle(angleDeg);
+      this.roundEffects.add(ray);
       const distance = Math.max(28, cell.size * 0.24);
       this.tweens.add({
         targets: ray,
@@ -1776,7 +2038,7 @@ class GameScene extends Phaser.Scene {
         scaleX: 1.5,
         duration: 220,
         ease: "Quad.easeOut",
-        onComplete: () => ray.destroy(),
+        onComplete: () => this.destroyRoundEffect(ray),
       });
     }
   }
@@ -1796,12 +2058,14 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Remove only this target, updating accessible cell state before any fade. */
   removeTarget(targetToRemove, animate, isHit = false) {
     if (!targetToRemove) {
       return;
     }
 
     this.activeTargets = this.activeTargets.filter((target) => target !== targetToRemove);
+    this.syncCellUi();
     if (targetToRemove.expireTimer) {
       targetToRemove.expireTimer.remove(false);
       targetToRemove.expireTimer = null;
@@ -1813,6 +2077,8 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.roundEffects.add(targetToRemove.container);
+
     this.tweens.add({
       targets: targetToRemove.container,
       alpha: 0,
@@ -1820,7 +2086,7 @@ class GameScene extends Phaser.Scene {
       duration: isHit ? 180 : 140,
       ease: "Quad.easeOut",
       onComplete: () => {
-        targetToRemove.container.destroy();
+        this.destroyRoundEffect(targetToRemove.container);
       },
     });
   }
@@ -1861,19 +2127,11 @@ class GameScene extends Phaser.Scene {
     this.clearCountdownTimers();
   }
 
+  /** Anchor the board below measured HUD/copy, then fit every screen's contents. */
   layout(width, height) {
     const w = Math.max(320, width);
     const h = Math.max(480, height);
     const columnWidth = Math.min(w - 32, NEON_THEME.layout.maxBoardWidth);
-    const topArea = Math.max(254, h * 0.27);
-    const bottomArea = Math.max(168, h * 0.2);
-    const availableBoardHeight = Math.max(240, h - topArea - bottomArea - 30);
-    const boardSize = Math.min(columnWidth, availableBoardHeight);
-    const boardLeft = (w - boardSize) * 0.5;
-    const boardTop = topArea + Math.max(12, (availableBoardHeight - boardSize) * 0.5);
-
-    this.layoutBackdrop(w, h, boardLeft, boardTop, boardSize);
-
     const hudWidth = Math.min(columnWidth, w - 26);
     const hudX = w * 0.5;
     const hudTop = Math.max(18, h * 0.028);
@@ -1891,6 +2149,8 @@ class GameScene extends Phaser.Scene {
     this.homeSubline.setFontSize(overlaySublineSize + 2);
     this.homeModeTitle.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.04), 16, 20));
     this.homeModeHint.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.036), 14, 18));
+    this.overlayHeadline.setFontSize(overlayHeadlineSize);
+    this.overlaySubline.setFontSize(overlaySublineSize);
     this.menuTitle.setFontSize(Phaser.Math.Clamp(Math.round(w * 0.05), 24, 30));
     this.levelBadge.setScale(badgeScale);
 
@@ -1901,6 +2161,10 @@ class GameScene extends Phaser.Scene {
       timeHeight: this.timeText.height,
       badgeHeight: this.levelBadgeBackground.height * badgeScale,
     });
+    const boardTop = hudLayout.cardBottom + Math.max(this.statusText.height, this.levelBannerText.height) + 26;
+    const boardSize = Math.min(columnWidth, Math.max(0, h - boardTop - 24));
+    const boardLeft = (w - boardSize) * 0.5;
+    this.layoutBackdrop(w, h, boardLeft, boardTop, boardSize);
     this.drawHud(hudX, hudTop, hudWidth, hudLayout.cardHeight);
     this.scoreText.setPosition(hudX, hudLayout.scoreY);
     this.timeText.setPosition(hudX, hudLayout.timeY);
@@ -1969,6 +2233,10 @@ class GameScene extends Phaser.Scene {
     });
     this.homeCardBackground.setSize(homeLayout.cardWidth, homeLayout.cardHeight);
     this.homeContainer.setPosition(hudX, homeLayout.cardCenterY);
+    this.homeHeadline.setPosition(0, homeLayout.titleOffsetY);
+    this.homeSubline.setPosition(0, homeLayout.sublineOffsetY);
+    this.homeModeTitle.setPosition(0, homeLayout.sectionLabelOffsetY);
+    this.homeModeHint.setPosition(0, homeLayout.hintOffsetY);
     const modeRowHalf = homeLayout.modeButtonWidth * 0.5 + homeLayout.modeButtonGap * 0.5;
     this.setButtonBaseScale(this.homeNormalModeButton, homeLayout.modeButtonScale);
     this.setButtonBaseScale(this.homeSeriousModeButton, homeLayout.modeButtonScale);
@@ -2016,7 +2284,7 @@ class GameScene extends Phaser.Scene {
         this.cellCenters[index] = { x: centerX, y: centerY, size: boardMetrics.cellSize };
         this.cellZones[index]
           .setPosition(centerX, centerY)
-          .setSize(boardMetrics.cellSize * 1.08, boardMetrics.cellSize * 1.08)
+          .setSize(boardMetrics.cellSize, boardMetrics.cellSize)
           .setInteractive();
       }
     }
@@ -2118,8 +2386,10 @@ class GameScene extends Phaser.Scene {
     this.layout(gameSize.width, gameSize.height);
   }
 
+  /** Expose visible state and logical CSS-pixel coordinates for reproducible QA. */
   snapshotState() {
     return {
+      coordinates: "canvas CSS pixels; origin top-left, x right, y down",
       mode: this.getSnapshotMode(),
       overlayMode: this.getSnapshotMode(),
       screenMode: this.screenMode,
@@ -2135,6 +2405,7 @@ class GameScene extends Phaser.Scene {
       activeTargets: this.activeTargets.map((target) => ({
         cellIndex: target.cellIndex,
         variantId: target.variantId,
+        ...this.cellCenters[target.cellIndex],
       })),
       buttons: {
         home: this.homePlayButton?.labelNode?.text ?? "",
@@ -2151,11 +2422,17 @@ class GameScene extends Phaser.Scene {
     };
   }
 
+  /** Pair every scene-owned listener and runtime resource with teardown. */
   shutdown() {
     this.clearTimers();
     this.clearActiveTargets(false);
+    this.clearRoundFeedback();
+    this.stopTones();
+    document.removeEventListener("visibilitychange", this.onDocumentHidden);
+    window.removeEventListener("pagehide", this.onPageHide);
     this.scale.off("resize", this.onResize, this);
     if (this.domUi.root) {
+      this.domUi.root.removeEventListener("keydown", this.onUiKeydown);
       this.domUi.root.replaceChildren();
       this.domUi.nodes = {};
     }
