@@ -31,12 +31,26 @@ async function capture(page, name) {
     assert.ok(rect.x >= -0.5 && rect.right <= geometry.viewport.width + 0.5, `${name}: ${key} label clipped`);
     assert.ok(rect.y >= -0.5 && rect.bottom <= geometry.viewport.height + 0.5, `${name}: ${key} label vertical bounds`);
   }
+  // An overlay may cover decorative board cells, but never other readable text.
+  const hudLabels=geometry.labels.filter(label=>['score','time','badge','status'].includes(label.key));
+  const overlayLabels=geometry.labels.filter(label=>['overlayHeadline','overlaySubline'].includes(label.key));
+  for(const overlay of overlayLabels) for(const hud of hudLabels) {
+    const a=overlay.rect,b=hud.rect;
+    assert.ok(a.right<=b.left || a.left>=b.right || a.bottom<=b.top || a.top>=b.bottom,`${name}: ${overlay.key} overlaps ${hud.key}`);
+  }
   // The visual grid and the native hit regions must agree after every resize.
-  const alignment = await scene(page, s => s.cellCenters.map((cell,i) => {
-    const node = s.domUi.nodes[`cell${i}`];
-    return { dx:parseFloat(node.style.left)-cell.x, dy:parseFloat(node.style.top)-cell.y, size:parseFloat(node.style.width)-cell.size };
-  }));
-  assert.ok(alignment.every(a => Math.abs(a.dx)+Math.abs(a.dy)+Math.abs(a.size)<0.01));
+  const alignment = await scene(page, s => {
+    const canvas=s.game.canvas.getBoundingClientRect();
+    const sx=canvas.width/s.scale.width,sy=canvas.height/s.scale.height;
+    return s.cellCenters.flatMap((cell,i)=>{
+      const node=s.domUi.nodes[`cell${i}`];
+      if(node.hidden) return [];
+      const hit=node.getBoundingClientRect();
+      return [{dx:hit.x+hit.width/2-(canvas.x+cell.x*sx),dy:hit.y+hit.height/2-(canvas.y+cell.y*sy),dw:hit.width-cell.size*sx,dh:hit.height-cell.size*sy}];
+    });
+  });
+  assert.ok(alignment.every(a => Object.values(a).every(delta=>Math.abs(delta)<0.6)),`${name}: canvas/native screen alignment ${JSON.stringify(alignment)}`);
+  geometry.alignment=alignment;
   await fs.writeFile(`${OUT}/${name}.json`, JSON.stringify(geometry,null,2));
 }
 
@@ -61,11 +75,11 @@ async function visibility(page, hidden) {
         for (const [width,height] of sizes) {
           const context = await browser.newContext({viewport:{width,height},deviceScaleFactor:2,hasTouch:true});
           const p = await context.newPage();
+          const prefix = `${name}-${width}x${height}`;
           const errors = [];
           p.on('pageerror', e=>{errors.push(e.message);console.error(`${prefix}: ${e.message}`);});
           await p.goto(`${server.origin}/reflexesGame/`);
           await p.waitForFunction(()=>window.__reflexesGameUi?.getScene()?.homePlayButton);
-          const prefix = `${name}-${width}x${height}`;
           await capture(p, `${prefix}-home`);
           await p.getByRole('button',{name:'しんけん',exact:true}).click();
           assert.equal(await p.getByRole('button',{name:'しんけん',exact:true}).getAttribute('aria-pressed'),'true');
@@ -147,17 +161,24 @@ async function visibility(page, hidden) {
           // Deadline fixtures use the actual scene methods at -1/0/+1ms.
           const boundaries = await scene(p,s=>{
             const rows=[];
-            for(const offset of [-1,0,1]) {
-              s.clearTimers();s.clearActiveTargets(false);s.isRunning=true;s.screenMode='playing';s.isMenuOpen=false;s.score=5;s.updateScoreText(false);
+            for(const mode of ['normal','serious']) for(const offset of [-1,0,1]) {
+              s.clearTimers();s.clearActiveTargets(false);s.selectedMode=mode;s.isRunning=true;s.screenMode='playing';s.isMenuOpen=false;s.score=5;s.updateScoreText(false);
               s.countdownEndAt=s.roundClock.now()-offset;
               s.createNodeTarget(0);
               s.onCellPressed(0);
-              rows.push({offset,score:s.score,mode:s.screenMode});
+              rows.push({selectedMode:mode,offset,score:s.score,mode:s.screenMode});
             }
             return rows;
           });
-          assert.deepEqual(boundaries.map(r=>r.score),[6,5,5]);
+          assert.deepEqual(boundaries.map(r=>r.score),[6,5,5,6,5,5]);
           await capture(p,`${prefix}-finished`);
+          await p.getByRole('button',{name:'もういちど',exact:true}).click();
+          await scene(p,s=>s.beginGameplayRound());
+          assert.equal(await p.locator('[data-cell-index="0"]').evaluate(n=>n===document.activeElement && n.tabIndex===0),true,'retry focus matches roving Tab stop');
+          assert.equal(await p.locator('[data-cell-index="1"]').getAttribute('tabindex'),'-1');
+          await p.keyboard.press('ArrowRight');
+          assert.equal(await p.locator('[data-cell-index="1"]').evaluate(n=>n===document.activeElement && n.tabIndex===0),true);
+          await p.keyboard.press('Escape');
           await p.getByRole('button',{name:'おうちへ',exact:true}).click();
           assert.equal(await scene(p,s=>s.selectedMode),'serious');
           assert.equal(await scene(p,s=>s.audioEnabled),true);
@@ -171,6 +192,13 @@ async function visibility(page, hidden) {
           });
           assert.deepEqual(leak.before,leak.after);
           assert.equal(leak.timers+leak.targets+leak.effects,0);
+          // Let real frame/timer callbacks run after cleanup and into a new preparation.
+          await p.waitForTimeout(1200);
+          assert.deepEqual(await scene(p,s=>({mode:s.screenMode,score:s.score,targets:s.activeTargets.length,effects:s.roundEffects.size})),{mode:'home',score:0,targets:0,effects:0});
+          await p.getByRole('button',{name:'あそぶ！',exact:true}).click();
+          const newPreparation=await scene(p,s=>s.startCountdownEndAt);
+          await p.waitForTimeout(1200);
+          assert.deepEqual(await scene(p,s=>({mode:s.screenMode,score:s.score,targets:s.activeTargets.length,deadline:s.startCountdownEndAt})),{mode:'countdown',score:0,targets:0,deadline:newPreparation});
           assert.deepEqual(errors,[]);
           results.push({browser:name,version:browser.version(),viewport:[width,height],boundaries,expiration,leak,errors});
           await context.close();

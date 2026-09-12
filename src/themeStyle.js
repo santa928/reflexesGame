@@ -443,8 +443,8 @@ export function computeHomeScreenLayout({
 }
 
 /**
- * Compute the finish overlay card plus its restart/home actions so both buttons
- * remain visible without pinning the stack to a fragile percentage.
+ * Fit measured overlay text and optional result actions inside the viewport.
+ * Preparation reserves no space for the result-only buttons.
  */
 export function computeFinishOverlayLayout({
   width,
@@ -456,6 +456,7 @@ export function computeFinishOverlayLayout({
   sublineHeight,
   buttonBaseWidth,
   buttonBaseHeight,
+  includeActions = true,
 }) {
   const isMobilePortrait = width < 480;
   const safeTop = isMobilePortrait ? 28 : 36;
@@ -472,7 +473,7 @@ export function computeFinishOverlayLayout({
   const buttonHeight = buttonBaseHeight * buttonScale;
   const cardToRestartGap = isMobilePortrait ? 24 : 30;
   const restartToHomeGap = isMobilePortrait ? 18 : 22;
-  const stackHeight = cardHeight + cardToRestartGap + buttonHeight + restartToHomeGap + buttonHeight;
+  const stackHeight = cardHeight + (includeActions ? cardToRestartGap + buttonHeight + restartToHomeGap + buttonHeight : 0);
   const preferredTop = Math.round(boardTop + boardSize * 0.5 - cardHeight * 0.5);
   const cardTop = Math.min(
     Math.max(preferredTop, safeTop),
@@ -484,6 +485,9 @@ export function computeFinishOverlayLayout({
   const homeButtonY = restartButtonY + buttonHeight * 0.5 + restartToHomeGap + buttonHeight * 0.5;
   const homeButtonBottom = homeButtonY + buttonHeight * 0.5;
   const requiredHeight = stackHeight + safeBottom;
+  const textHeight = headlineHeight + textGap + sublineHeight;
+  const headlineOffsetY = -textHeight / 2 + headlineHeight / 2;
+  const sublineOffsetY = textHeight / 2 - sublineHeight / 2;
 
   return {
     safeTop,
@@ -499,6 +503,8 @@ export function computeFinishOverlayLayout({
     restartButtonY,
     homeButtonY,
     homeButtonBottom,
+    headlineOffsetY,
+    sublineOffsetY,
   };
 }
 

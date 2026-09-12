@@ -51,6 +51,7 @@ const { serveGame } = require('./server.cjs');
       });
       release='failed';
       phase='failed update';
+      console.log(`PWA ${name}: ${phase}`);
       await p.evaluate(async()=>{
         const r=await navigator.serviceWorker.getRegistration();
         r.addEventListener('updatefound',()=>{window.failedWorker=r.installing;},{once:true});
@@ -62,6 +63,7 @@ const { serveGame } = require('./server.cjs');
       assert.equal(await p.evaluate(()=>!!window.__reflexesGameUi.getScene().roundClock),false,'failed update keeps baseline running');
       release='candidate';
       phase='candidate update';
+      console.log(`PWA ${name}: ${phase}`);
       await p.evaluate(async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update();});
       await p.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting);
       await p.evaluate(()=>window.__reflexesGameUi.getScene().startGame());
@@ -82,12 +84,14 @@ const { serveGame } = require('./server.cjs');
       assert.equal(await q.evaluate(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting),true,'second old client keeps update waiting');
       await q.close();
       phase='activation';
+      console.log(`PWA ${name}: ${phase}`);
       await observer.waitForFunction(async()=>{
         const r=await navigator.serviceWorker.getRegistration('/reflexesGame/');
         return r?.active===window.expectedWorker && r.active?.state==='activated';
       });
       const fresh=await context.newPage();
       phase='candidate relaunch';
+      console.log(`PWA ${name}: ${phase}`);
       await fresh.goto(`${server.origin}/reflexesGame/`);
       await fresh.waitForFunction(()=>!!window.__reflexesGameUi?.getScene()?.roundClock);
       await fresh.evaluate(()=>navigator.serviceWorker.ready);
@@ -112,6 +116,7 @@ const { serveGame } = require('./server.cjs');
       // context.setOffline can abort navigation before the SW gets a fetch event.
       server.setOffline(true);
       phase='offline';
+      console.log(`PWA ${name}: ${phase}`);
       await fresh.reload();
       await fresh.waitForFunction(()=>!!window.__reflexesGameUi?.getScene()?.roundClock);
       await fresh.getByRole('button',{name:'あそぶ！',exact:true}).click();

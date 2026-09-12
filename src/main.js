@@ -641,7 +641,7 @@ class GameScene extends Phaser.Scene {
     const isHome = this.screenMode === "home";
     const isCountdown = this.screenMode === "countdown";
     const isFinished = this.screenMode === "finished";
-    const showGameChrome = !isHome;
+    const showGameChrome = !isHome && !this.overlayHidesHud;
     const showMenu = this.isMenuOpen;
 
     this.setDomVisible("score", showGameChrome && !showMenu);
@@ -1114,16 +1114,15 @@ class GameScene extends Phaser.Scene {
       const countSize = Phaser.Math.Clamp(Math.round(this.scale.width * 0.18), 68, 100);
       this.overlayHeadline
         .setText(copy.headline)
-        .setPosition(0, -42)
         .setFontSize(headlineSize)
         .setColor("#bae6fd")
         .setShadow(0, 0, "#22d3ee", 14, false, true);
       this.overlaySubline
         .setText(copy.subline)
-        .setPosition(0, 22)
         .setFontSize(countSize)
         .setColor("#f8fafc")
         .setShadow(0, 0, "#22d3ee", 18, false, true);
+      this.layoutOverlay();
       this.syncDomFromPhaser("overlayHeadline", this.overlayHeadline, {
         glowColor: "#22d3ee",
         glowBlur: 14,
@@ -1140,17 +1139,16 @@ class GameScene extends Phaser.Scene {
     const sublineSize = Phaser.Math.Clamp(Math.round(this.scale.width * 0.042), 16, 20);
     this.overlayHeadline
       .setText(copy.headline)
-      .setPosition(0, -28)
       .setFontSize(headlineSize)
       .setColor("#f8fafc")
       .setShadow(0, 0, "#22d3ee", 16, false, true);
     this.overlaySubline
       .setText(`${copy.subline}: ${String(this.score).padStart(2, "0")}`)
-      .setPosition(0, 34)
       .setFontSize(sublineSize)
       .setColor("#bae6fd")
       .setShadow(0, 0, "#22d3ee", 10, false, true);
     this.updateButtonVisual(this.restartButton, copy.cta);
+    this.layoutOverlay();
     this.syncDomFromPhaser("overlayHeadline", this.overlayHeadline, {
       glowColor: "#22d3ee",
       glowBlur: 16,
@@ -1227,18 +1225,46 @@ class GameScene extends Phaser.Scene {
     return this.screenMode;
   }
 
+  /** Place the current overlay from its actual text and visible action sizes. */
+  layoutOverlay() {
+    this.overlayHidesHud = false;
+    if (!this.overlayLayoutMetrics || !["countdown", "finished"].includes(this.screenMode)) return;
+    const metrics = this.overlayLayoutMetrics;
+    const overlay = computeFinishOverlayLayout({
+      ...metrics,
+      headlineHeight: this.overlayHeadline.height,
+      sublineHeight: this.overlaySubline.height,
+      buttonBaseWidth: this.restartButton.baseWidth,
+      buttonBaseHeight: this.restartButton.baseHeight,
+      includeActions: this.screenMode === "finished",
+    });
+    this.overlayCardBackground.setSize(overlay.cardWidth, overlay.cardHeight);
+    this.overlayContainer.setPosition(metrics.width / 2, overlay.centerY);
+    this.overlayHeadline.setPosition(0, overlay.headlineOffsetY);
+    this.overlaySubline.setPosition(0, overlay.sublineOffsetY);
+    this.setButtonBaseScale(this.restartButton, overlay.buttonScale);
+    this.setButtonBaseScale(this.finishHomeButton, overlay.buttonScale);
+    this.setButtonPosition(this.restartButton, metrics.width / 2, overlay.restartButtonY);
+    this.setButtonPosition(this.finishHomeButton, metrics.width / 2, overlay.homeButtonY);
+    // The result repeats the score, so omit the background HUD when both cannot fit.
+    this.overlayHidesHud = overlay.cardTop < metrics.statusBottom + 12;
+  }
+
+  /** Keep canvas decoration and native text consistent with the visible stage. */
   refreshScreenUi() {
+    this.refreshOverlayCopy();
     const isHome = this.screenMode === "home";
     const isCountdown = this.screenMode === "countdown";
     const isFinished = this.screenMode === "finished";
     const showGameChrome = !isHome;
+    const showHud = showGameChrome && !this.overlayHidesHud;
     const showMenu = this.isMenuOpen;
 
-    this.hudGraphics.setVisible(showGameChrome);
-    this.scoreText.setVisible(showGameChrome);
-    this.timeText.setVisible(showGameChrome);
-    this.levelBadge.setVisible(showGameChrome);
-    this.statusText.setVisible(showGameChrome);
+    this.hudGraphics.setVisible(showHud);
+    this.scoreText.setVisible(showHud);
+    this.timeText.setVisible(showHud);
+    this.levelBadge.setVisible(showHud);
+    this.statusText.setVisible(showHud);
     this.boardGraphics.setVisible(showGameChrome);
     this.dangerOverlay.setVisible(showGameChrome);
 
@@ -1248,7 +1274,6 @@ class GameScene extends Phaser.Scene {
     this.setButtonVisible(this.homeSeriousModeButton, isHome);
     this.setButtonVisible(this.homeSoundButton, isHome);
 
-    this.refreshOverlayCopy();
     this.overlayContainer.setVisible((isCountdown || isFinished) && !showMenu);
     this.setButtonVisible(this.restartButton, isFinished && !showMenu);
     this.setButtonVisible(this.finishHomeButton, isFinished && !showMenu);
@@ -1341,6 +1366,7 @@ class GameScene extends Phaser.Scene {
     this.wasRunningBeforeMenu = false;
     this.isRunning = false;
     this.spawnReservationCount = 0;
+    this.keyboardCellIndex = 0;
     this.score = 0;
     this.tier = 1;
     this.currentTierConfig = this.getTierConfig(1);
@@ -2200,23 +2226,14 @@ class GameScene extends Phaser.Scene {
     }
     this.levelBannerBackground.setSize(levelBannerLayout.width, levelBannerLayout.height);
     this.levelBanner.setPosition(hudX, levelBannerLayout.y);
-    const finishLayout = computeFinishOverlayLayout({
+    this.overlayLayoutMetrics = {
       width: w,
       height: h,
       columnWidth,
       boardTop,
       boardSize,
-      headlineHeight: this.overlayHeadline.height,
-      sublineHeight: this.overlaySubline.height,
-      buttonBaseWidth: this.restartButton.baseWidth,
-      buttonBaseHeight: this.restartButton.baseHeight,
-    });
-    this.overlayCardBackground.setSize(finishLayout.cardWidth, finishLayout.cardHeight);
-    this.overlayContainer.setPosition(hudX, finishLayout.centerY);
-    this.setButtonBaseScale(this.restartButton, finishLayout.buttonScale);
-    this.setButtonBaseScale(this.finishHomeButton, finishLayout.buttonScale);
-    this.setButtonPosition(this.restartButton, hudX, finishLayout.restartButtonY);
-    this.setButtonPosition(this.finishHomeButton, hudX, finishLayout.homeButtonY);
+      statusBottom: statusLayout.y + this.statusText.height / 2,
+    };
 
     const homeLayout = computeHomeScreenLayout({
       width: w,

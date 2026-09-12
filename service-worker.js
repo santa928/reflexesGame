@@ -1,5 +1,5 @@
 // Generated from the precached files by scripts/update-cache-version.mjs.
-const CACHE_VERSION = "f165c78de0bfb5a5b6df";
+const CACHE_VERSION = "04dbe7956c40165ca879";
 const CACHE_PREFIX = `pikapika-touch:${self.registration.scope}:`;
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 const APP_SHELL_FILES = [
