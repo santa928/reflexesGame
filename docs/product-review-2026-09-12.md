@@ -68,6 +68,7 @@ ES modules / 同梱Phaser 3.70.0を継続する。React等への置換は今回�
 - 最終Docker実行の通常プレイは準備の観測時間2.987秒、5回のタッチで5点、1.1秒以上の手動pauseを含め32.024秒で結果へ。観測時間には描画・操作の待ち時間が含まれる。時計・得点・ターゲットの書換えなし。終了後のretryも確認。
 - 20回の開始→hit→レベル演出→pause→home後、進行timer・予約spawn・active target・round effectは0。DOMとPhaser表示オブジェクト数は同水準。
 - PWAは実際の基準版を同じorigin/pathに配信し、資産取得失敗、複数タブ、正常移行、別アプリcache、通信切断後のreload/プレイ、SW登録拒否時のオンライン起動をChromium/WebKitで確認。WebKitの`context.setOffline`はnavigation内部エラーとなったため、試験サーバが全HTTP接続を切断する方法を両ブラウザ共通で使った。
+- 初回CIでは新版待機中に旧版を開き直す試験の競合が発生した。失敗時の応答・ページ状態を記録し、待機中のWorkerの参照を全タブclose前に保存して、その同一Workerの有効化を待つ条件へ修正した。失敗更新も対象Workerが`redundant`になったことを確認する。CIの最終結果はPRに記録する。
 - hidden/visibleはブラウザ内でイベントと状態を注入する境界検証。自動操作ブラウザのタブ操作では実際のhiddenを安定して観測できず、実端末でのアプリ切替・BFCache・OS強制終了・iOSホーム画面PWA・スピーカーの聴感は未検証。これらを合格扱いしない。
 - `develop-web-game`クライアントも実行。canvasの直接取得がWebGLでは黒くなるため、可視証拠はDOMも含むPlaywrightのページスクリーンショットを使う。ゲーム本体のスクリーンショットは目視確認した。
 

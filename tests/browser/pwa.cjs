@@ -51,8 +51,13 @@ const { serveGame } = require('./server.cjs');
       });
       release='failed';
       phase='failed update';
-      await p.evaluate(async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update();});
-      await p.waitForFunction(async()=>!(await navigator.serviceWorker.getRegistration()).installing);
+      await p.evaluate(async()=>{
+        const r=await navigator.serviceWorker.getRegistration();
+        r.addEventListener('updatefound',()=>{window.failedWorker=r.installing;},{once:true});
+        await r.update();
+      });
+      await p.waitForFunction(()=>['installed','redundant'].includes(window.failedWorker?.state));
+      assert.equal(await p.evaluate(()=>window.failedWorker.state),'redundant','the failed download must actually reject the candidate install');
       assert.equal(await p.evaluate(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting),false);
       assert.equal(await p.evaluate(()=>!!window.__reflexesGameUi.getScene().roundClock),false,'failed update keeps baseline running');
       release='candidate';
@@ -62,17 +67,24 @@ const { serveGame } = require('./server.cjs');
       await p.evaluate(()=>window.__reflexesGameUi.getScene().startGame());
       await p.waitForFunction(()=>window.__reflexesGameUi.getScene().isRunning);
       assert.equal(await p.evaluate(()=>!!window.__reflexesGameUi.getScene().roundClock),false,'waiting update must not replace running code');
-      await p.close();
-      assert.equal(await q.evaluate(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting),true,'second old client keeps update waiting');
-      await q.close();
-      phase='activation';
-      // Observe activation from outside the SW scope so a too-early reopened
-      // client cannot keep the old worker alive during the activation task.
+      // Capture the waiting worker before closing clients. A fresh registration
+      // snapshot can briefly expose the old active worker without its waiting
+      // peer, so absence of waiting alone does not prove candidate activation.
       const observer=await context.newPage();
       await observer.goto(`${server.origin}/observer.html`);
       await observer.waitForFunction(async()=>{
         const r=await navigator.serviceWorker.getRegistration('/reflexesGame/');
-        return r && !r.waiting && !r.installing && r.active?.state==='activated';
+        if(!r?.waiting) return false;
+        window.expectedWorker=r.waiting;
+        return true;
+      });
+      await p.close();
+      assert.equal(await q.evaluate(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting),true,'second old client keeps update waiting');
+      await q.close();
+      phase='activation';
+      await observer.waitForFunction(async()=>{
+        const r=await navigator.serviceWorker.getRegistration('/reflexesGame/');
+        return r?.active===window.expectedWorker && r.active?.state==='activated';
       });
       const fresh=await context.newPage();
       phase='candidate relaunch';
