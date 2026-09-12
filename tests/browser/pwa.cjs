@@ -19,8 +19,20 @@ const { serveGame } = require('./server.cjs');
       return body;
     }});
     const browser=await engine.launch(name==='chromium'?{args:['--no-sandbox']}:{});
+    let context;
+    let phase='baseline';
+    const diagnostics=[];
     try {
-      const context=await browser.newContext({viewport:{width:390,height:844}});
+      context=await browser.newContext({viewport:{width:390,height:844}});
+      context.on('page', page=>{
+        page.on('pageerror',error=>diagnostics.push({phase,type:'pageerror',message:error.message}));
+        page.on('requestfailed',request=>diagnostics.push({phase,type:'requestfailed',url:request.url(),failure:request.failure()}));
+        page.on('response',response=>{
+          if(/(?:main\.js|roundClock\.js|service-worker\.js|index\.html)$/.test(response.url())) {
+            diagnostics.push({phase,type:'response',url:response.url(),status:response.status(),fromServiceWorker:response.fromServiceWorker()});
+          }
+        });
+      });
       const p=await context.newPage();
       await p.goto(`${server.origin}/reflexesGame/not-an-app.html`);
       await p.evaluate(async()=>{await caches.open('other-app-v1');});
@@ -38,11 +50,13 @@ const { serveGame } = require('./server.cjs');
         await unrelated.put(new URL('./styles.css',location.href),new Response('unrelated-cache-sentinel'));
       });
       release='failed';
+      phase='failed update';
       await p.evaluate(async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update();});
       await p.waitForFunction(async()=>!(await navigator.serviceWorker.getRegistration()).installing);
       assert.equal(await p.evaluate(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting),false);
       assert.equal(await p.evaluate(()=>!!window.__reflexesGameUi.getScene().roundClock),false,'failed update keeps baseline running');
       release='candidate';
+      phase='candidate update';
       await p.evaluate(async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update();});
       await p.waitForFunction(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting);
       await p.evaluate(()=>window.__reflexesGameUi.getScene().startGame());
@@ -51,6 +65,7 @@ const { serveGame } = require('./server.cjs');
       await p.close();
       assert.equal(await q.evaluate(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting),true,'second old client keeps update waiting');
       await q.close();
+      phase='activation';
       // Observe activation from outside the SW scope so a too-early reopened
       // client cannot keep the old worker alive during the activation task.
       const observer=await context.newPage();
@@ -60,6 +75,7 @@ const { serveGame } = require('./server.cjs');
         return r && !r.waiting && !r.installing && r.active?.state==='activated';
       });
       const fresh=await context.newPage();
+      phase='candidate relaunch';
       await fresh.goto(`${server.origin}/reflexesGame/`);
       await fresh.waitForFunction(()=>!!window.__reflexesGameUi?.getScene()?.roundClock);
       await fresh.evaluate(()=>navigator.serviceWorker.ready);
@@ -83,6 +99,7 @@ const { serveGame } = require('./server.cjs');
       // Drop every real HTTP connection. This also works on Linux WebKit, where
       // context.setOffline can abort navigation before the SW gets a fetch event.
       server.setOffline(true);
+      phase='offline';
       await fresh.reload();
       await fresh.waitForFunction(()=>!!window.__reflexesGameUi?.getScene()?.roundClock);
       await fresh.getByRole('button',{name:'あそぶ！',exact:true}).click();
@@ -98,6 +115,13 @@ const { serveGame } = require('./server.cjs');
       await online.waitForFunction(()=>window.__reflexesGameUi.getScene().isRunning);
       reports.push({browser:name,version:browser.version(),baselineDeletesOthers,failedInstallRetainsBaseline:true,waitsForAllClients:true,offlinePlay:true,registrationBlockedOnlinePlay:true,ownership,cacheUrls});
       await denied.close();
+    } catch(error) {
+      const pages=[];
+      for(const page of context?.pages() || []) {
+        pages.push(await page.evaluate(async()=>({url:location.href,ready:document.readyState,buttons:document.querySelectorAll('button').length,hasUi:!!window.__reflexesGameUi,hasClock:!!window.__reflexesGameUi?.getScene()?.roundClock,caches:await caches.keys(),workers:(await navigator.serviceWorker.getRegistrations()).map(r=>({scope:r.scope,active:r.active?.state,waiting:r.waiting?.state,installing:r.installing?.state}))})).catch(e=>({error:e.message})));
+      }
+      await fs.writeFile(`/app/tmp/audit/pwa-${name}-failure.json`,JSON.stringify({browser:name,phase,error:error.message,diagnostics,pages},null,2));
+      throw error;
     } finally { await browser.close(); await server.close(); }
   }
   await fs.writeFile('/app/tmp/audit/pwa-report.json',JSON.stringify(reports,null,2));
