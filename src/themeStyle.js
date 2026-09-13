@@ -343,15 +343,16 @@ export function computeHomeScreenLayout({
   hintHeight,
 }) {
   const isMobilePortrait = width < 480;
+  const compact = height < 700;
   const safeTop = isMobilePortrait ? 24 : 36;
   const safeBottom = isMobilePortrait ? 28 : 40;
-  const cardTopPadding = isMobilePortrait ? 28 : 34;
-  const cardBottomPadding = isMobilePortrait ? 26 : 30;
-  const titleGap = isMobilePortrait ? 14 : 18;
-  const sectionGap = isMobilePortrait ? 12 : 14;
-  const hintGap = isMobilePortrait ? 18 : 22;
+  const cardTopPadding = compact ? 18 : isMobilePortrait ? 28 : 34;
+  const cardBottomPadding = compact ? 18 : isMobilePortrait ? 26 : 30;
+  const titleGap = compact ? 10 : isMobilePortrait ? 14 : 18;
+  const sectionGap = compact ? 8 : isMobilePortrait ? 12 : 14;
+  const hintGap = compact ? 10 : isMobilePortrait ? 18 : 22;
   const cardHeight = Math.max(
-    254,
+    compact ? 190 : 254,
     Math.ceil(
       cardTopPadding
         + titleHeight
@@ -365,19 +366,20 @@ export function computeHomeScreenLayout({
     ),
   );
   const cardWidth = Math.min(columnWidth * 0.98, 430);
-  const modeButtonScale = Math.min(Math.max(columnWidth / 540, 0.68), 0.84);
+  const modeButtonGap = Math.min(28, columnWidth * 0.04);
+  const modeButtonScale = Math.min(Math.max(columnWidth / 540, 0.68), 0.84,
+    (columnWidth - modeButtonGap) / (2 * modeButtonBaseWidth));
   const modeButtonWidth = modeButtonBaseWidth * modeButtonScale;
   const modeButtonHeight = modeButtonBaseHeight * modeButtonScale;
-  const modeButtonGap = Math.min(28, columnWidth * 0.04);
-  const soundButtonScale = Math.min(Math.max(columnWidth / buttonBaseWidth, 0.74), 1);
+  const soundButtonScale = Math.min(columnWidth / buttonBaseWidth, compact ? 0.8 : 1);
   const soundButtonWidth = buttonBaseWidth * soundButtonScale;
   const soundButtonHeight = buttonBaseHeight * soundButtonScale;
-  const playButtonScale = Math.min(Math.max(columnWidth / buttonBaseWidth, 0.74), 1);
+  const playButtonScale = Math.min(columnWidth / buttonBaseWidth, compact ? 0.8 : 1);
   const playButtonWidth = buttonBaseWidth * playButtonScale;
   const playButtonHeight = buttonBaseHeight * playButtonScale;
-  const cardToModeGap = isMobilePortrait ? 34 : 42;
-  const modeToSoundGap = isMobilePortrait ? 22 : 26;
-  const soundToPlayGap = isMobilePortrait ? 18 : 22;
+  const cardToModeGap = compact ? 16 : isMobilePortrait ? 34 : 42;
+  const modeToSoundGap = compact ? 12 : isMobilePortrait ? 22 : 26;
+  const soundToPlayGap = compact ? 12 : isMobilePortrait ? 18 : 22;
   const totalHeight = cardHeight
     + cardToModeGap
     + modeButtonHeight
@@ -392,6 +394,10 @@ export function computeHomeScreenLayout({
   const cardTop = Math.max(safeTop, startY);
   const cardCenterY = cardTop + cardHeight * 0.5;
   const cardBottom = cardTop + cardHeight;
+  const titleOffsetY = -cardHeight / 2 + cardTopPadding + titleHeight / 2;
+  const sublineOffsetY = titleOffsetY + titleHeight / 2 + titleGap + sublineHeight / 2;
+  const sectionLabelOffsetY = sublineOffsetY + sublineHeight / 2 + sectionGap + sectionLabelHeight / 2;
+  const hintOffsetY = sectionLabelOffsetY + sectionLabelHeight / 2 + hintGap + hintHeight / 2;
   const modeRowY = cardBottom + cardToModeGap + modeButtonHeight * 0.5;
   const soundButtonY = modeRowY + modeButtonHeight * 0.5 + modeToSoundGap + soundButtonHeight * 0.5;
   const playButtonY = soundButtonY + soundButtonHeight * 0.5 + soundToPlayGap + playButtonHeight * 0.5;
@@ -413,6 +419,11 @@ export function computeHomeScreenLayout({
     cardTop,
     cardBottom,
     cardCenterY,
+    titleOffsetY,
+    sublineOffsetY,
+    sectionLabelOffsetY,
+    hintOffsetY,
+    contentBottom: cardCenterY + hintOffsetY + hintHeight / 2,
     requiredHeight,
     modeButtonScale,
     modeButtonWidth,
@@ -432,8 +443,8 @@ export function computeHomeScreenLayout({
 }
 
 /**
- * Compute the finish overlay card plus its restart/home actions so both buttons
- * remain visible without pinning the stack to a fragile percentage.
+ * Fit measured overlay text and optional result actions inside the viewport.
+ * Preparation reserves no space for the result-only buttons.
  */
 export function computeFinishOverlayLayout({
   width,
@@ -445,6 +456,7 @@ export function computeFinishOverlayLayout({
   sublineHeight,
   buttonBaseWidth,
   buttonBaseHeight,
+  includeActions = true,
 }) {
   const isMobilePortrait = width < 480;
   const safeTop = isMobilePortrait ? 28 : 36;
@@ -461,7 +473,7 @@ export function computeFinishOverlayLayout({
   const buttonHeight = buttonBaseHeight * buttonScale;
   const cardToRestartGap = isMobilePortrait ? 24 : 30;
   const restartToHomeGap = isMobilePortrait ? 18 : 22;
-  const stackHeight = cardHeight + cardToRestartGap + buttonHeight + restartToHomeGap + buttonHeight;
+  const stackHeight = cardHeight + (includeActions ? cardToRestartGap + buttonHeight + restartToHomeGap + buttonHeight : 0);
   const preferredTop = Math.round(boardTop + boardSize * 0.5 - cardHeight * 0.5);
   const cardTop = Math.min(
     Math.max(preferredTop, safeTop),
@@ -473,6 +485,9 @@ export function computeFinishOverlayLayout({
   const homeButtonY = restartButtonY + buttonHeight * 0.5 + restartToHomeGap + buttonHeight * 0.5;
   const homeButtonBottom = homeButtonY + buttonHeight * 0.5;
   const requiredHeight = stackHeight + safeBottom;
+  const textHeight = headlineHeight + textGap + sublineHeight;
+  const headlineOffsetY = -textHeight / 2 + headlineHeight / 2;
+  const sublineOffsetY = textHeight / 2 - sublineHeight / 2;
 
   return {
     safeTop,
@@ -488,6 +503,8 @@ export function computeFinishOverlayLayout({
     restartButtonY,
     homeButtonY,
     homeButtonBottom,
+    headlineOffsetY,
+    sublineOffsetY,
   };
 }
 

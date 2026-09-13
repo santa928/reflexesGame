@@ -1,0 +1,7 @@
+FROM mcr.microsoft.com/playwright:v1.62.1-noble
+WORKDIR /tools
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+ENV NODE_PATH=/tools/node_modules
+WORKDIR /app
+CMD ["npm", "test"]

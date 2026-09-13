@@ -1,4 +1,7 @@
-const CACHE_NAME = "pikapika-touch-v1";
+// Generated from the precached files by scripts/update-cache-version.mjs.
+const CACHE_VERSION = "04dbe7956c40165ca879";
+const CACHE_PREFIX = `pikapika-touch:${self.registration.scope}:`;
+const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 const APP_SHELL_FILES = [
   "./",
   "./index.html",
@@ -9,17 +12,18 @@ const APP_SHELL_FILES = [
   "./src/themeStyle.js",
   "./src/spawnLogic.js",
   "./src/targetStyle.js",
+  "./src/roundClock.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
 ];
+const SHELL_URLS = new Set(APP_SHELL_FILES.map(file => new URL(file, self.registration.scope).href));
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL_FILES))
-      .then(() => self.skipWaiting()),
+      .then((cache) => cache.addAll([...SHELL_URLS].map(url => new Request(url, { cache: "reload" })))),
   );
 });
 
@@ -29,10 +33,9 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((cacheNames) => Promise.all(
         cacheNames
-          .filter((cacheName) => cacheName !== CACHE_NAME)
+          .filter((cacheName) => cacheName.startsWith(CACHE_PREFIX) && cacheName !== CACHE_NAME)
           .map((cacheName) => caches.delete(cacheName)),
-      ))
-      .then(() => self.clients.claim()),
+      )),
   );
 });
 
@@ -42,32 +45,14 @@ self.addEventListener("fetch", (event) => {
   }
 
   const requestUrl = new URL(event.request.url);
-  if (requestUrl.origin !== self.location.origin) {
-    return;
-  }
-
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match("./index.html")),
-    );
-    return;
-  }
+  requestUrl.search = "";
+  requestUrl.hash = "";
+  if (!SHELL_URLS.has(requestUrl.href)) return;
+  const cacheUrl = event.request.mode === "navigate"
+    ? new URL("./index.html", self.registration.scope).href
+    : requestUrl.href;
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse.ok) {
-          return networkResponse;
-        }
-
-        const responseClone = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
-        return networkResponse;
-      });
-    }),
+    caches.open(CACHE_NAME).then(async (cache) => (await cache.match(cacheUrl)) || fetch(event.request)),
   );
 });

@@ -208,6 +208,19 @@ test("finish overlay layout stacks restart and home buttons within the viewport"
   assert.equal(layout.cardBottom <= 844 - layout.safeBottom, true);
 });
 
+test("small portrait home keeps every action above the safe bottom edge", () => {
+  const layout = computeHomeScreenLayout({
+    width: 320, height: 568, columnWidth: 288,
+    buttonBaseWidth: 280, buttonBaseHeight: 88,
+    modeButtonBaseWidth: 220, modeButtonBaseHeight: 76,
+    titleHeight: 34, sublineHeight: 24, sectionLabelHeight: 20, hintHeight: 18,
+  });
+  assert.ok(layout.playButtonBottom <= 568 - layout.safeBottom);
+  assert.ok(layout.cardTop >= layout.safeTop);
+  assert.ok(layout.modeButtonHeight >= 44);
+  assert.ok(layout.modeRowY - layout.modeButtonHeight / 2 > layout.cardBottom);
+});
+
 test("hud layout keeps the level badge inside the panel on mobile portrait", () => {
   const layout = computeHudLayout({
     width: 390,
